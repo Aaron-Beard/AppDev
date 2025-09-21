@@ -1,0 +1,19 @@
+1. What is the importance of version control in collaborative projects?
+
+	If you mess something up, you can revert to a previous project state and figure out where the error occurred. 
+
+2. What is the difference between staging and committing?
+
+	Staging is when you choose which files will be updated, and committing is when you finalize the package to be sent, along with a message explaining the changes
+
+3. What command (or button in VS Code) is used to send local commits to GitHub?
+
+	You use the commit button to make your commits, then you use the "push" command in the terminal to submit your commits
+
+4. How does branching help in managing multiple features in a project?
+
+	Branching allows you to have multiple versions of a program at once, so you can test out proposed changes without altering the main file until you're certain you want to keep them.
+
+5. What common errors did you encounter (e.g., refspec error) and how did you solve them?
+
+	I've never used VSCode before, so I run into lots of errors, but your instructions were extremely helpful. I did run into errors because I occasionally forgot to lead with the word 'git' when using the terminal. I also have run into many errors previously in another class when I couldn't get the command 'make' to work for part of the instructions another professor gave to us. In this project, being careful to read your instructions solved every problem I had. I really appreciate how well written they were, since I have no experience with this application whatsoever, and I was able to complete the task without any issues.
