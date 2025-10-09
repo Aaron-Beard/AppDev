@@ -10,7 +10,7 @@ function populateTimeSelects() {
   const startSel = document.getElementById('startTime')
   const endSel   = document.getElementById('endTime')
   const times = []
-  for (let h = 4; h <= 23; h++) {              // from 04:00 to 23:45
+  for (let h = 3; h <= 23; h++) {              // from 03:00 to 23:45
     for (let m = 0; m < 60; m += 15) {
       const hh = String(h).padStart(2, '0')
       const mm = String(m).padStart(2, '0')
@@ -18,11 +18,19 @@ function populateTimeSelects() {
     }
   }
   for (let t of times) {
-    startSel.innerHTML += `<option value="${t}">${t}</option>`
-    endSel.innerHTML   += `<option value="${t}">${t}</option>`
+    const label = formatTime(t)
+    startSel.innerHTML += `<option value="${t}">${label}</option>`
+    endSel.innerHTML   += `<option value="${t}">${label}</option>`
   }
 }
 
+// Convert "HH:MM" → "h:MM AM/PM"
+function formatTime(hhmm) {
+  const [h, m] = hhmm.split(':').map(Number)
+  const suffix = h < 12 ? 'AM' : 'PM'
+  const hour12 = ((h + 11) % 12) + 1  // maps 0→12, 13→1, etc.
+  return `${hour12}:${String(m).padStart(2, '0')} ${suffix}`
+}
 
 // Convert "HH:MM" → minutes
 function toMinutes(t) {
@@ -199,7 +207,7 @@ function renderList(list = student.enrolledClasses) {
           const idx = student.enrolledClasses.indexOf(c)
           return `
             <div class="class-entry${idx === editIndex ? ' editing' : ''}">
-              <span>${c.code} – ${c.startTime}–${c.endTime}</span>
+              <span>${c.code} - ${formatTime(c.startTime)}-${formatTime(c.endTime)}</span>
               ${idx === editIndex
                 ? `<button class="cancel-btn" data-index="${idx}">Cancel</button>`
                 : `<button class="edit-btn"   data-index="${idx}">Edit</button>`
