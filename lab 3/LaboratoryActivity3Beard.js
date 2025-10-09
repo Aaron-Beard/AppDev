@@ -51,7 +51,7 @@ function isPrime(n){
     n += 10;
     let prime = true;
     for(let i = 2; i <= n/2; i++){
-        if(n % i ===0){
+        if(n % i === 0){
             prime = false;
         }
     }
