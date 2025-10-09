@@ -128,9 +128,13 @@ function attachEntryHandlers() {
   // DELETE buttons
   document.querySelectorAll('.delete-btn').forEach(btn =>
     btn.addEventListener('click', e => {
-      const idx = +e.currentTarget.dataset.index
-      student.removeClass(idx)
-      applyFilter()
+      const idx = Number(e.currentTarget.dataset.index)
+      const entry = student.enrolledClasses[idx]
+      const msg = `Delete class ${entry.code} on ${entry.day} (${entry.startTime}–${entry.endTime})?`
+      if (confirm(msg)) {
+        student.removeClass(idx)
+        applyFilter()
+      }
     })
   )
 }
@@ -375,8 +379,14 @@ listBtn.addEventListener('click', () => {
 
 // Event: Reset Everything
 resetBtn.addEventListener('click', () => {
-  student.enrolledClasses = []
-  applyFilter()      // this will call renderList([]) + renderSummary([])
+  // only prompt if there’s something to clear
+  if (
+    student.enrolledClasses.length > 0 &&
+    confirm('Are you sure you want to clear your entire schedule?')
+  ) {
+    student.enrolledClasses = []
+    applyFilter()  // re-renders list & summary
+  }
 })
 
 // Initial render on page load
