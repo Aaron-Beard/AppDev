@@ -11,7 +11,6 @@
   <form id="add-form" novalidate>
     <div id="error-container"></div>
 
-
     <input id="code" placeholder="Class Code" required>
     <fieldset id="day-group">
     <legend>Days</legend>
@@ -23,14 +22,12 @@
     <label><input type="checkbox" value="Saturday"> Sat</label>
     <label><input type="checkbox" value="Sunday"> Sun</label>
     </fieldset>
-
     <label for="startTime">Start Time</label>
     <select id="startTime"></select>
-
     <label for="endTime">End Time</label>
     <select id="endTime"></select>
-
     <button type="submit">Add Class</button>
+    <button type="button" id="reset-btn">Reset List</button>
   </form>
 
   <div id="controls">
@@ -45,11 +42,21 @@
      <option value="Saturday">Saturday</option>
      <option value="Sunday">Sunday</option>
    </select>
-    <button id="list-btn">Show Enrolled Classes</button>
-    <button id="reset-btn">Reset List</button>
     <button id="sort-code-btn">Sort by Class Code ▲</button>
     <button id="sort-day-btn">Sort by Day ▲</button>
   </div>
+
+  <label for="update-code-input">Update Class Code:</label>
+  <input
+    type="text"
+    id="update-code-input"
+    placeholder="Enter code to edit…"
+  />
+  <button type="button" id="update-code-btn">Find & Edit</button>
+
+  <div id="edit-select-container"></div>
+  <div id="update-error" class="error-message"></div>
+
 
   <div id="list"></div>
   <div id="summary"></div>

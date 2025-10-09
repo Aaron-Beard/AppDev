@@ -33,3 +33,16 @@
   gap: 0.5em;
   align-items: center;
 }
+
+.error-message {
+  color: #c00;
+  font-size: 0.9em;
+  margin-top: 0.5em;
+}
+
+button.confirming {
+  background-color: #f8d7da;
+  border-color:    #f5c6cb;
+  color:           #721c24;
+}
+

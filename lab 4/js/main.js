@@ -81,12 +81,6 @@ class Student {
   removeClass(index) {
     this.enrolledClasses.splice(index, 1)
   }
-
-  listClasses() {
-    return this.enrolledClasses
-      .map(c => `${c.code} on ${c.day} from ${c.startTime} to ${c.endTime}`)
-      .join('\n')
-  }
 }
 
 // Instantiate a student (you can prompt for name/id later)
@@ -96,10 +90,14 @@ const student = new Student('Alice', 'S001')
 const form      = document.getElementById('add-form')
 const listDiv   = document.getElementById('list')
 const summaryDiv= document.getElementById('summary')
-const listBtn   = document.getElementById('list-btn')
 const resetBtn  = document.getElementById('reset-btn')
 const sortCodeBtn = document.getElementById('sort-code-btn')
 const sortDayBtn  = document.getElementById('sort-day-btn')
+const updateCodeInput = document.getElementById('update-code-input')
+const updateCodeBtn   = document.getElementById('update-code-btn')
+const submitBtn = form.querySelector('button[type=submit]')
+const filterDaySelect = document.getElementById('filter-day')
+const updateError = document.getElementById('update-error')
 
 let sortConfig = {
   field: null,   // 'code' or 'day'
@@ -107,6 +105,13 @@ let sortConfig = {
 }
 
 let editIndex = null
+
+function clearUpdateError() {
+  updateError.textContent = ''
+}
+
+updateCodeInput.addEventListener('input', clearUpdateError)
+
 
 // Remove any existing highlight
 function clearHighlight() {
@@ -124,10 +129,6 @@ function highlightEntryByIndex(idx) {
   if (entryDiv) entryDiv.classList.add('editing');
 }
 
-const submitBtn = form.querySelector('button[type="submit"]')
-
-const filterDaySelect = document.getElementById('filter-day')
-
 // after you define form, submitBtn, editIndex…
 function attachEntryHandlers() {
   // EDIT
@@ -140,18 +141,32 @@ function attachEntryHandlers() {
     btn.addEventListener('click', onCancelClick)
   )
 
-  // DELETE w/ confirm
-  document.querySelectorAll('.delete-btn').forEach(btn =>
+  // DELETE w/ two-step confirmation
+  document.querySelectorAll('.delete-btn').forEach(btn => {
+    let deleteTimerId
+
     btn.addEventListener('click', e => {
-      const idx   = Number(e.currentTarget.dataset.index)
-      const entry = student.enrolledClasses[idx]
-      const msg   = `Delete class ${entry.code} on ${entry.day} (${entry.startTime}–${entry.endTime})?`
-      if (confirm(msg)) {
+      // 1st click → flip into “Confirm Delete” mode
+      if (!btn.classList.contains('confirming')) {
+        btn.classList.add('confirming')
+        btn.textContent = 'Confirm Delete'
+
+        // auto-revert after 5s
+        deleteTimerId = setTimeout(() => {
+          btn.classList.remove('confirming')
+          btn.textContent = 'Delete'
+        }, 5000)
+
+      } else {
+        // 2nd click → actually delete
+        clearTimeout(deleteTimerId)
+
+        const idx = Number(e.currentTarget.dataset.index)
         student.removeClass(idx)
         applyFilter()
       }
     })
-  )
+  })
 }
 
 sortCodeBtn.addEventListener('click', () => {
@@ -172,6 +187,98 @@ sortDayBtn.addEventListener('click', () => {
   applyFilter()
 })
 
+updateCodeBtn.addEventListener('click', () => {
+  clearUpdateError()
+  console.log('🖱 Find & Edit clicked – raw input:', updateCodeInput.value)
+
+  // now define and log codeToFind
+  const codeToFind = updateCodeInput.value.trim().toUpperCase()
+  console.log('   → normalized codeToFind =', codeToFind)
+
+  if (!codeToFind) {
+    updateError.textContent = 'Please enter a class code to update.'
+    return
+  }
+
+  const matches = student.enrolledClasses
+    .map((entry, idx) => ({ entry, idx }))
+    .filter(({ entry }) => entry.code.toUpperCase().startsWith(codeToFind)
+    )
+  console.log('   → matches.length =', matches.length)
+
+  if (matches.length === 0) {
+    updateError.textContent = `No class found with code “${codeToFind}”.`
+    return
+  }
+
+  if (matches.length === 1) {
+    console.log('   → single match, idx =', matches[0].idx)
+    startEditSession(matches[0].idx)
+    return
+  }
+
+  console.log('   → multiple matches, rendering selector')
+  renderSessionSelector(matches)
+})
+
+function startEditSession(idx) {
+  editIndex = idx
+  const cls = student.enrolledClasses[idx]
+
+  // Prefill form fields
+  document.getElementById('code').value      = cls.code
+  document.getElementById('startTime').value = cls.startTime
+  document.getElementById('endTime').value   = cls.endTime
+
+  // Check only the correct day checkbox
+  document
+    .querySelectorAll('#day-group input[type=checkbox]')
+    .forEach(cb => {
+      cb.checked = (cb.value === cls.day)
+    })
+
+  // Switch submit button label
+  submitBtn.textContent = 'Save Changes'
+
+  // Highlight the editing row
+  applyFilter()
+
+  // Remove the selector UI, if still present
+  document.getElementById('edit-select-container').innerHTML = ''
+}
+
+function renderSessionSelector(matches) {
+  const container = document.getElementById('edit-select-container')
+  container.innerHTML = ''  // clear any old content
+
+  // Label above the dropdown
+  const label = document.createElement('label')
+  label.textContent = 'Select session to edit:'
+  container.appendChild(label)
+
+  // The <select> element
+  const select = document.createElement('select')
+  select.id = 'session-select'
+  container.appendChild(select)
+
+  // Populate options
+  matches.forEach(({ entry, idx }) => {
+    const opt = document.createElement('option')
+    opt.value = idx
+    opt.textContent = 
+      `${entry.code} - ${entry.day} - ${formatTime(entry.startTime)}-${formatTime(entry.endTime)}`
+    select.appendChild(opt)
+  })
+
+  // When the user picks one, immediately start editing it
+  select.addEventListener('change', e => {
+    const chosenIdx = Number(e.target.value)
+    startEditSession(chosenIdx)
+  })
+
+  // Optionally auto-open the dropdown
+  select.focus()
+}
 
 function onEditClick(e) {
   clearErrors()
@@ -438,20 +545,33 @@ document.querySelectorAll('#day-group input').forEach(ch =>
   ch.addEventListener('change', clearErrors)
 )
 
-// Event: Show List via Button
-listBtn.addEventListener('click', () => {
-  alert(student.listClasses())
-})
+let resetConfirming = false
+let resetTimerId
 
-// Event: Reset Everything
 resetBtn.addEventListener('click', () => {
-  // only prompt if there’s something to clear
-  if (
-    student.enrolledClasses.length > 0 &&
-    confirm('Are you sure you want to clear your entire schedule?')
-  ) {
+  if (!resetConfirming) {
+    // 1st click: flip into “confirm” mode
+    resetConfirming = true
+    resetBtn.textContent = 'Confirm Reset'
+    resetBtn.classList.add('confirming')
+
+    // auto‐revert after 5s if unused
+    resetTimerId = setTimeout(() => {
+      resetConfirming = false
+      resetBtn.textContent = 'Reset List'
+      resetBtn.classList.remove('confirming')
+    }, 5000)
+
+  } else {
+    // 2nd click: user confirmed
+    clearTimeout(resetTimerId)
     student.enrolledClasses = []
-    applyFilter()  // re-renders list & summary
+    applyFilter()
+
+    // restore button to normal
+    resetConfirming = false
+    resetBtn.textContent = 'Reset List'
+    resetBtn.classList.remove('confirming')
   }
 })
 
