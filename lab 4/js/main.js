@@ -45,7 +45,7 @@ class Student {
     // 1. Ensure endTime > startTime
     if (toMinutes(newClass.endTime) <= toMinutes(newClass.startTime)) {
       alert(`Invalid time: ${newClass.code} must end after it starts.`)
-      return
+      return false
     }
 
     // 2. Time-conflict check
@@ -87,14 +87,81 @@ const listBtn   = document.getElementById('list-btn')
 const resetBtn  = document.getElementById('reset-btn')
 
 let editIndex = null
+
+// Remove any existing highlight
+function clearHighlight() {
+  document.querySelectorAll('.class-entry.editing').forEach(el =>
+    el.classList.remove('editing')
+  );
+}
+
+// Highlight the entry matching a given index
+function highlightEntryByIndex(idx) {
+  clearHighlight();
+  const btn = document.querySelector(`.edit-btn[data-index="${idx}"]`);
+  if (!btn) return;
+  const entryDiv = btn.closest('.class-entry');
+  if (entryDiv) entryDiv.classList.add('editing');
+}
+
 const submitBtn = form.querySelector('button[type="submit"]')
 
 const filterDaySelect = document.getElementById('filter-day')
 
+// after you define form, submitBtn, editIndex…
+function attachEntryHandlers() {
+  // EDIT buttons
+  document.querySelectorAll('.edit-btn').forEach(btn =>
+    btn.addEventListener('click', onEditClick)
+  )
+
+  // CANCEL buttons (only on the editing row)
+  document.querySelectorAll('.cancel-btn').forEach(btn =>
+    btn.addEventListener('click', onCancelClick)
+  )
+
+  // DELETE buttons
+  document.querySelectorAll('.delete-btn').forEach(btn =>
+    btn.addEventListener('click', e => {
+      const idx = +e.currentTarget.dataset.index
+      student.removeClass(idx)
+      applyFilter()
+    })
+  )
+}
+
+function onEditClick(e) {
+  clearErrors()
+  editIndex = Number(e.currentTarget.dataset.index)
+  highlightEntryByIndex(editIndex)
+
+  const entry = student.enrolledClasses[editIndex]
+  document.getElementById('code').value = entry.code
+  document.querySelectorAll('#day-group input').forEach(ch =>
+    ch.checked = ch.value === entry.day
+  )
+  document.getElementById('startTime').value = entry.startTime
+  document.getElementById('endTime').value   = entry.endTime
+
+  submitBtn.textContent = 'Update Class'
+  applyFilter()  // to show Cancel button
+}
+
+function onCancelClick(e) {
+  editIndex = null
+  clearErrors()
+  clearHighlight()
+
+  submitBtn.textContent = 'Add Class'
+  form.reset()
+
+  // Re-render so that Cancel button disappears
+  applyFilter()
+}
+
 // Render functions
 function renderList(list = student.enrolledClasses) {
-
-  if (list.length === 0) {
+  if (!list.length) {
     listDiv.innerText = 'No classes enrolled.'
     return
   }
@@ -102,38 +169,23 @@ function renderList(list = student.enrolledClasses) {
   listDiv.innerHTML = list
     .map(c => {
       const globalIdx = student.enrolledClasses.indexOf(c)
-      return`
-        <div class="class-entry">
-         <span>${c.code} - ${c.day} (${c.startTime}-${c.endTime})</span>
-         <button class="edit-btn" data-index="${globalIdx}">Edit</button>
-         <button class="delete-btn" data-index="${globalIdx}">Delete</button>
+      const isEditing = globalIdx === editIndex
+
+      return `
+        <div class="class-entry${isEditing ? ' editing' : ''}">
+          <span>${c.code} – ${c.day} (${c.startTime}–${c.endTime})</span>
+          ${isEditing
+            ? `<button class="cancel-btn" data-index="${globalIdx}">Cancel</button>`
+            : `<button class="edit-btn"   data-index="${globalIdx}">Edit</button>`
+          }
+          <button class="delete-btn" data-index="${globalIdx}">Delete</button>
         </div>
-       `
+      `
     })
     .join('')
 
-    document.querySelectorAll('.edit-btn').forEach(btn => {
-      btn.addEventListener('click', e => {
-        clearErrors()
-        editIndex = Number(e.currentTarget.dataset.index)
-        const entry = student.enrolledClasses[editIndex]
-        document.getElementById('code').value = entry.code
-        document.querySelectorAll('#day-group input').forEach(ch => {
-          ch.checked = ch.value === entry.day
-        })
-        document.getElementById('startTime').value = entry.startTime
-        document.getElementById('endTime').value   = entry.endTime
-        submitBtn.textContent = 'Update Class'
-      })
-    })
-
-  document.querySelectorAll('.delete-btn').forEach(btn => {
-      btn.addEventListener('click', e => {
-        const idx = Number(e.currentTarget.dataset.index)
-        student.removeClass(idx)
-        applyFilter()
-      })
-    })
+  // Now wire up the buttons
+  attachEntryHandlers()
 }
 
 function renderSummary(list = student.enrolledClasses) {

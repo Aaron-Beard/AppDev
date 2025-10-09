@@ -10,3 +10,9 @@
 .invalid {
   border: 1px solid #c00;
 }
+
+/* Outline the currently edited entry */
+.class-entry.editing {
+  border: 2px dashed rgb(0, 0, 204);
+  background-color: #eceeff;
+}
