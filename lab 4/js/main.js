@@ -1,5 +1,10 @@
 // js/main.js
 
+const WEEKDAYS = [
+  'Monday', 'Tuesday', 'Wednesday',
+  'Thursday', 'Friday', 'Saturday', 'Sunday'
+]
+
 // Populate time select elements with 15-min intervals
 function populateTimeSelects() {
   const startSel = document.getElementById('startTime')
@@ -166,25 +171,51 @@ function renderList(list = student.enrolledClasses) {
     return
   }
 
-  listDiv.innerHTML = list
-    .map(c => {
-      const globalIdx = student.enrolledClasses.indexOf(c)
-      const isEditing = globalIdx === editIndex
+  // 1) Sort by day index, then by start time
+  const sorted = [...list].sort((a, b) => {
+    const dayA = WEEKDAYS.indexOf(a.day)
+    const dayB = WEEKDAYS.indexOf(b.day)
+    if (dayA !== dayB) return dayA - dayB
+    return toMinutes(a.startTime) - toMinutes(b.startTime)
+  })
+
+  // 2) Group classes by day
+  const groups = WEEKDAYS
+    .map(day => ({
+      day,
+      entries: sorted.filter(c => c.day === day)
+    }))
+    .filter(group => group.entries.length > 0)
+
+  // 3) Build HTML with headings per group
+  listDiv.innerHTML = groups
+    .map(group => {
+      const items = group.entries
+        .map(c => {
+          const idx = student.enrolledClasses.indexOf(c)
+          return `
+            <div class="class-entry${idx === editIndex ? ' editing' : ''}">
+              <span>${c.code} – ${c.startTime}–${c.endTime}</span>
+              ${idx === editIndex
+                ? `<button class="cancel-btn" data-index="${idx}">Cancel</button>`
+                : `<button class="edit-btn"   data-index="${idx}">Edit</button>`
+              }
+              <button class="delete-btn" data-index="${idx}">Delete</button>
+            </div>
+          `
+        })
+        .join('')
 
       return `
-        <div class="class-entry${isEditing ? ' editing' : ''}">
-          <span>${c.code} – ${c.day} (${c.startTime}–${c.endTime})</span>
-          ${isEditing
-            ? `<button class="cancel-btn" data-index="${globalIdx}">Cancel</button>`
-            : `<button class="edit-btn"   data-index="${globalIdx}">Edit</button>`
-          }
-          <button class="delete-btn" data-index="${globalIdx}">Delete</button>
+        <div class="day-group">
+          <h3>${group.day}</h3>
+          ${items}
         </div>
       `
     })
     .join('')
 
-  // Now wire up the buttons
+  // 4) Reattach event handlers
   attachEntryHandlers()
 }
 

@@ -16,3 +16,20 @@
   border: 2px dashed rgb(0, 0, 204);
   background-color: #eceeff;
 }
+
+.day-group {
+  margin-bottom: 1.5em;
+}
+
+.day-group h3 {
+  margin: 0.5em 0;
+  border-bottom: 1px solid #ccc;
+  font-size: 1.1em;
+}
+
+.class-entry {
+  padding: 0.3em 0.5em;
+  display: flex;
+  gap: 0.5em;
+  align-items: center;
+}
