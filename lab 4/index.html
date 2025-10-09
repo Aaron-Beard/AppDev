@@ -8,6 +8,17 @@
 <body>
   <h2>Class Scheduling System</h2>
 
+  <div id="add-student-container">
+    <label for="student-select">Student:</label>
+    <select id="student-select"></select>
+
+    <input type="text" id="student-name-input" placeholder="Student name">
+    <input type="text" id="student-id-input"   placeholder="Student ID">
+    <button type="button" id="add-student-btn">Add Student</button>
+
+    <div id="student-error" class="error-container"></div>
+  </div>
+
   <form id="add-form" novalidate>
     <div id="error-container"></div>
 

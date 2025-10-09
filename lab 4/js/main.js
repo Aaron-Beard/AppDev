@@ -57,34 +57,62 @@ class Student {
   addClass(newClass) {
     // 1. Ensure endTime > startTime
     if (toMinutes(newClass.endTime) <= toMinutes(newClass.startTime)) {
-      alert(`Invalid time: ${newClass.code} must end after it starts.`)
-      return false
+      return `End time must be after start time for ${newClass.code}.`
     }
 
     // 2. Time-conflict check
     for (let c of this.enrolledClasses) {
-      if (
-        c.day === newClass.day &&
-        toMinutes(newClass.startTime) < toMinutes(c.endTime) &&
-        toMinutes(c.startTime)   < toMinutes(newClass.endTime)
-      ) {
-        alert(`Time conflict with ${c.code} on ${c.day}`)
-        return false
-      }
-    }
+      const overlap =
+      c.day === newClass.day &&
+      toMinutes(c.startTime) < toMinutes(newClass.endTime) &&
+      toMinutes(newClass.startTime) < toMinutes(c.endTime) 
 
-    // 3. If all good, add the class
+    if (overlap) { 
+      return `Time conflict with ${c.code} on ${c.day}.`
+    }
+  }
     this.enrolledClasses.push(newClass)
-    return true
+    return null  // success
   }
 
   removeClass(index) {
     this.enrolledClasses.splice(index, 1)
   }
+
+
+  updateClass(index, newClass) {
+    // returns null on success, or an error message string on failure
+    const old = this.enrolledClasses.splice(index, 1)[0]
+    const err = this.addClass(newClass)
+    if (err) {
+      this.enrolledClasses.splice(index, 0, old)
+    return err
+    }
+    return null
+  }
+
+  listClasses() {
+    if (!this.enrolledClasses.length) {
+      return `${this.name} (${this.id}) has no classes.`
+    }
+    const parts = this.enrolledClasses.map(c =>
+      `${c.code} on ${c.day} ${formatTime(c.startTime)}–${formatTime(c.endTime)}`
+    )
+    return `${this.name} (${this.id}) is enrolled in: ${parts.join('; ')}.`
+  }
 }
 
-// Instantiate a student (you can prompt for name/id later)
-const student = new Student('Alice', 'S001')
+
+
+
+// ——— Multi-student support ———
+const students = [ new Student('Timmy','001') ]
+let currentStudentId = students[0].id
+
+function getCurrentStudent() {
+  return students.find(s => s.id === currentStudentId)
+}
+
 
 // References to DOM elements
 const form      = document.getElementById('add-form')
@@ -98,6 +126,11 @@ const updateCodeBtn   = document.getElementById('update-code-btn')
 const submitBtn = form.querySelector('button[type=submit]')
 const filterDaySelect = document.getElementById('filter-day')
 const updateError = document.getElementById('update-error')
+const studentSelect   = document.getElementById('student-select')
+const addStudentBtn   = document.getElementById('add-student-btn')
+const studentNameInput = document.getElementById('student-name-input')
+const studentIdInput   = document.getElementById('student-id-input')
+const studentErrorDiv  = document.getElementById('student-error')
 
 let sortConfig = {
   field: null,   // 'code' or 'day'
@@ -105,6 +138,47 @@ let sortConfig = {
 }
 
 let editIndex = null
+
+// Populate the dropdown
+function refreshStudentDropdown() {
+  studentSelect.innerHTML = students
+    .map(s => `<option value="${s.id}">${s.name} (${s.id})</option>`)
+    .join('')
+  studentSelect.value = currentStudentId
+}
+refreshStudentDropdown()
+
+// Switch active student
+studentSelect.addEventListener('change', () => {
+  currentStudentId = studentSelect.value
+  applyFilter()
+})
+
+// Add a new student
+addStudentBtn.addEventListener('click', () => {
+  // clear any previous student‐add errors
+  studentErrorDiv.innerText = ''
+
+  const name = studentNameInput.value.trim()
+  const id   = studentIdInput.value.trim()
+
+  // Validate and show inline error
+  if (!name || !id || students.some(s => s.id === id)) {
+    studentErrorDiv.innerText = 'Invalid or duplicate student name/ID'
+    return
+  }
+
+  const s = new Student(name, id)
+  students.push(s)
+  currentStudentId = id
+  refreshStudentDropdown()
+  applyFilter()
+
+  // clear the inputs on success
+  studentNameInput.value = ''
+  studentIdInput.value   = ''
+})
+
 
 function clearUpdateError() {
   updateError.textContent = ''
@@ -162,7 +236,7 @@ function attachEntryHandlers() {
         clearTimeout(deleteTimerId)
 
         const idx = Number(e.currentTarget.dataset.index)
-        student.removeClass(idx)
+        getCurrentStudent().removeClass(idx)
         applyFilter()
       }
     })
@@ -200,7 +274,7 @@ updateCodeBtn.addEventListener('click', () => {
     return
   }
 
-  const matches = student.enrolledClasses
+  const matches = getCurrentStudent().enrolledClasses
     .map((entry, idx) => ({ entry, idx }))
     .filter(({ entry }) => entry.code.toUpperCase().startsWith(codeToFind)
     )
@@ -223,7 +297,7 @@ updateCodeBtn.addEventListener('click', () => {
 
 function startEditSession(idx) {
   editIndex = idx
-  const cls = student.enrolledClasses[idx]
+  const cls = getCurrentStudent().enrolledClasses[idx]
 
   // Prefill form fields
   document.getElementById('code').value      = cls.code
@@ -285,7 +359,7 @@ function onEditClick(e) {
   editIndex = Number(e.currentTarget.dataset.index)
   highlightEntryByIndex(editIndex)
 
-  const entry = student.enrolledClasses[editIndex]
+  const entry = getCurrentStudent().enrolledClasses[editIndex]
   document.getElementById('code').value = entry.code
   document.querySelectorAll('#day-group input').forEach(ch =>
     ch.checked = ch.value === entry.day
@@ -310,7 +384,7 @@ function onCancelClick(e) {
 }
 
 // Render functions
-function renderList(list = student.enrolledClasses) {
+function renderList(list = getCurrentStudent().enrolledClasses) {
   if (!list.length) {
     listDiv.innerText = 'No classes enrolled.'
     return
@@ -361,7 +435,7 @@ function renderList(list = student.enrolledClasses) {
     .map(group => {
       const items = group.entries
         .map(c => {
-          const idx       = student.enrolledClasses.indexOf(c)
+          const idx       = getCurrentStudent().enrolledClasses.indexOf(c)
           const isEditing = idx === editIndex
 
           // Choose what to display before the time
@@ -396,35 +470,42 @@ function renderList(list = student.enrolledClasses) {
   attachEntryHandlers()
 }
 
-function renderSummary(list = student.enrolledClasses) {
-  const count = list.length
-  // sum all durations in minutes
+function renderSummary(list = getCurrentStudent().enrolledClasses) {
+  const student = getCurrentStudent();
+  const nameId  = `${student.name} (${student.id})`;
+
+  if (list.length === 0) {
+    summaryDiv.innerText = `${nameId} has no classes.`;
+    return;
+  }
+
+  // 1) Count of classes
+  const count = list.length;
+
+  // 2) Sum total minutes
   const totalMinutes = list.reduce(
     (sum, c) => sum + (toMinutes(c.endTime) - toMinutes(c.startTime)),
     0
-  )
+  );
 
-  // convert to decimal hours
-  const totalHours = totalMinutes / 60
+  // 3) Convert to decimal hours, rounded to two decimals
+  const totalHours = totalMinutes / 60;
+  const hoursDecimal = Math.round(totalHours * 100) / 100;
 
-  // trim to 2 decimal places
-  const displayHours = Number.isInteger(totalHours)
-  ? totalHours
-  : totalHours.toFixed(2)
-
-  summaryDiv.innerText = 
-    `Total classes: ${count}` + '\n' +
-    `Total hours: ${displayHours} hours`
+  // 4) Render
+  summaryDiv.innerText =
+    `${nameId} has ${count} ${count === 1 ? 'class' : 'classes'} ` +
+    `totaling ${hoursDecimal} hour${hoursDecimal === 1 ? '' : 's'}.`;
 }
 
-function applyFilter() {
-   const day = filterDaySelect.value
-   const filtered = (day === 'All')
-     ? student.enrolledClasses
-     : student.enrolledClasses.filter(c => c.day === day)
 
-   renderList(filtered)   
-   renderSummary(filtered)
+function applyFilter() {
+  const day = filterDaySelect.value
+  const all = getCurrentStudent().enrolledClasses
+  const filtered = day==='All' ? all : all.filter(c=>c.day===day)
+
+  renderList(filtered)   
+  renderSummary(filtered)
  }
 
 filterDaySelect.addEventListener('change', applyFilter)
@@ -493,44 +574,49 @@ form.addEventListener('submit', e => {
   }
 
   if (editIndex !== null) {
-    // 1) Remove the single old entry
-    const oldEntry = student.enrolledClasses.splice(editIndex, 1)[0]
-
-    // 2) Try to add one entry per selected day
-    const addedEntries = []
-    let allAdded = true
-
-    for (let day of days) {
-      const candidate = new ClassEntry(code, day, start, end)
-      if (student.addClass(candidate)) {
-        addedEntries.push(candidate)
-      } else {
-        allAdded = false
-        break
-      }
-    }
-
-    if (!allAdded) {
-      // 3a) Roll back any that did get added
+  // 1) Remove the original entry
+  const oldEntry = getCurrentStudent().enrolledClasses.splice(editIndex, 1)[0]
+  const addedEntries = []
+  let allAdded = true
+  // 2) Try to add one new entry per selected day
+  for (let d of days) {
+    const candidate = new ClassEntry(code, d, start, end)
+    const err = getCurrentStudent().addClass(candidate)
+    if (err) {
+      allAdded = false
+      // 3a) Rollback any that got added
       addedEntries.forEach(ent => {
-        const idx = student.enrolledClasses.indexOf(ent)
-        if (idx > -1) student.enrolledClasses.splice(idx, 1)
+        const idx = getCurrentStudent().enrolledClasses.indexOf(ent)
+        if (idx > -1) {
+          getCurrentStudent().enrolledClasses.splice(idx, 1)
+        }
       })
-      // 3b) Restore the original at its old position
-      student.enrolledClasses.splice(editIndex, 0, oldEntry)
-      // leave editIndex as-is so user can tweak again
-    } else {
-      // 4) Success: clear edit state
-      editIndex = null
+      break
     }
+    addedEntries.push(candidate)
+  }
+
+  if (!allAdded) {
+    // 3b) Restore original at its old position
+    getCurrentStudent().enrolledClasses.splice(editIndex, 0, oldEntry)
+    showErrors(['Time conflict or invalid time.'])
+    return
+  }
+
+  // 4) Success: clear edit state
+  editIndex = null
 
   } else {
-    // Normal “Add” flow for new multi-day entries
-    days.forEach(day => {
-      const entry = new ClassEntry(code, day, start, end)
-      student.addClass(entry)
-    })
+  // Add-mode: push one entry per day (unchanged)
+  for (let d of days) {
+    const entry = new ClassEntry(code, d, start, end)
+    const err = getCurrentStudent().addClass(entry)
+    if (err) {
+      showErrors([err])
+      return
+    }
   }
+}
 
   // Re-render + reset form + reset button text
   applyFilter()
@@ -565,7 +651,7 @@ resetBtn.addEventListener('click', () => {
   } else {
     // 2nd click: user confirmed
     clearTimeout(resetTimerId)
-    student.enrolledClasses = []
+    getCurrentStudent().enrolledClasses = []
     applyFilter()
 
     // restore button to normal
