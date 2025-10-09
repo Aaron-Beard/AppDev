@@ -1,10 +1,11 @@
 // js/main.js
 
+// Populate time select elements with 15-min intervals
 function populateTimeSelects() {
   const startSel = document.getElementById('startTime')
   const endSel   = document.getElementById('endTime')
   const times = []
-  for (let h = 4; h <= 23; h++) {              // from 07:00 to 22:45
+  for (let h = 4; h <= 23; h++) {              // from 04:00 to 23:45
     for (let m = 0; m < 60; m += 15) {
       const hh = String(h).padStart(2, '0')
       const mm = String(m).padStart(2, '0')
@@ -55,12 +56,13 @@ class Student {
         toMinutes(c.startTime)   < toMinutes(newClass.endTime)
       ) {
         alert(`Time conflict with ${c.code} on ${c.day}`)
-        return
+        return false
       }
     }
 
     // 3. If all good, add the class
     this.enrolledClasses.push(newClass)
+    return true
   }
 
   removeClass(index) {
@@ -84,6 +86,9 @@ const summaryDiv= document.getElementById('summary')
 const listBtn   = document.getElementById('list-btn')
 const resetBtn  = document.getElementById('reset-btn')
 
+let editIndex = null
+const submitBtn = form.querySelector('button[type="submit"]')
+
 const filterDaySelect = document.getElementById('filter-day')
 
 // Render functions
@@ -100,11 +105,27 @@ function renderList(list = student.enrolledClasses) {
       return`
         <div class="class-entry">
          <span>${c.code} - ${c.day} (${c.startTime}-${c.endTime})</span>
+         <button class="edit-btn" data-index="${globalIdx}">Edit</button>
          <button class="delete-btn" data-index="${globalIdx}">Delete</button>
         </div>
        `
     })
     .join('')
+
+    document.querySelectorAll('.edit-btn').forEach(btn => {
+      btn.addEventListener('click', e => {
+        clearErrors()
+        editIndex = Number(e.currentTarget.dataset.index)
+        const entry = student.enrolledClasses[editIndex]
+        document.getElementById('code').value = entry.code
+        document.querySelectorAll('#day-group input').forEach(ch => {
+          ch.checked = ch.value === entry.day
+        })
+        document.getElementById('startTime').value = entry.startTime
+        document.getElementById('endTime').value   = entry.endTime
+        submitBtn.textContent = 'Update Class'
+      })
+    })
 
   document.querySelectorAll('.delete-btn').forEach(btn => {
       btn.addEventListener('click', e => {
@@ -200,27 +221,61 @@ function validateForm() {
   return { errors, code, days, start, end }
 }
 
-// Event: Add Class
+// Event: Form Submission
 form.addEventListener('submit', e => {
   e.preventDefault()
   clearErrors()
 
-  // 1) Run validations
   const { errors, code, days, start, end } = validateForm()
   if (errors.length) {
     showErrors(errors)
     return
   }
 
-  // 2) Add entries for each day
-  days.forEach(day => {
-    const entry = new ClassEntry(code, day, start, end)
-    student.addClass(entry)
-  })
+  if (editIndex !== null) {
+    // 1) Remove the single old entry
+    const oldEntry = student.enrolledClasses.splice(editIndex, 1)[0]
 
-  // 3) Re-render and reset
+    // 2) Try to add one entry per selected day
+    const addedEntries = []
+    let allAdded = true
+
+    for (let day of days) {
+      const candidate = new ClassEntry(code, day, start, end)
+      if (student.addClass(candidate)) {
+        addedEntries.push(candidate)
+      } else {
+        allAdded = false
+        break
+      }
+    }
+
+    if (!allAdded) {
+      // 3a) Roll back any that did get added
+      addedEntries.forEach(ent => {
+        const idx = student.enrolledClasses.indexOf(ent)
+        if (idx > -1) student.enrolledClasses.splice(idx, 1)
+      })
+      // 3b) Restore the original at its old position
+      student.enrolledClasses.splice(editIndex, 0, oldEntry)
+      // leave editIndex as-is so user can tweak again
+    } else {
+      // 4) Success: clear edit state
+      editIndex = null
+    }
+
+  } else {
+    // Normal “Add” flow for new multi-day entries
+    days.forEach(day => {
+      const entry = new ClassEntry(code, day, start, end)
+      student.addClass(entry)
+    })
+  }
+
+  // Re-render + reset form + reset button text
   applyFilter()
   form.reset()
+  submitBtn.textContent = 'Add Class'
 })
 
 ;['code','startTime','endTime'].forEach(id =>
