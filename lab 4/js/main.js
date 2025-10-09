@@ -96,11 +96,11 @@ function renderList(list = student.enrolledClasses) {
 
   listDiv.innerHTML = list
     .map(c => {
-      const glovalIdx = student.enrolledClasses.indexOf(c)
+      const globalIdx = student.enrolledClasses.indexOf(c)
       return`
         <div class="class-entry">
          <span>${c.code} - ${c.day} (${c.startTime}-${c.endTime})</span>
-         <button class="delete-btn" data-index="${glovalIdx}">Delete</button>
+         <button class="delete-btn" data-index="${globalIdx}">Delete</button>
         </div>
        `
     })
@@ -148,42 +148,87 @@ function applyFilter() {
 
 filterDaySelect.addEventListener('change', applyFilter)
 
+// Clear all previous errors and invalid markers
+function clearErrors() {
+  document.getElementById('error-container').innerHTML = ''
+  // remove .invalid from any element
+  document.querySelectorAll('.invalid').forEach(el =>
+    el.classList.remove('invalid')
+  )
+}
+
+// Display a list of error messages
+function showErrors(errors) {
+  const container = document.getElementById('error-container')
+  container.innerHTML = errors
+    .map(msg => `<div>${msg}</div>`)
+    .join('')
+}
+
+// Return an array of validation messages
+function validateForm() {
+  const errors = []
+  const code = document.getElementById('code').value.trim()
+  const days = Array.from(
+    document.querySelectorAll('#day-group input[type=checkbox]')
+  )
+  .filter(ch => ch.checked)
+  .map(ch => ch.value)
+  const start = document.getElementById('startTime').value
+  const end   = document.getElementById('endTime').value
+
+  if (!code) {
+    errors.push('Class code is required.')
+    document.getElementById('code').classList.add('invalid')
+  }
+
+  if (days.length === 0) {
+    errors.push('Select at least one day.')
+    document.getElementById('day-group').classList.add('invalid')
+  }
+
+  if (!start || !end) {
+    errors.push('Both start time and end time are required.')
+    if (!start) document.getElementById('startTime').classList.add('invalid')
+    if (!end)   document.getElementById('endTime').classList.add('invalid')
+  } else if (toMinutes(end) <= toMinutes(start)) {
+    errors.push('End time must be after start time.')
+    document.getElementById('startTime').classList.add('invalid')
+    document.getElementById('endTime').classList.add('invalid')
+  }
+
+  return { errors, code, days, start, end }
+}
+
 // Event: Add Class
 form.addEventListener('submit', e => {
   e.preventDefault()
+  clearErrors()
 
-  // read the inputs
-  const code      = document.getElementById('code').value
-  const startTime = document.getElementById('startTime').value
-  const endTime   = document.getElementById('endTime').value
-
-  // gather checked days
-  const days = Array.from(
-    document.querySelectorAll('#day-group input[type=checkbox]:checked')
-    ).map(ch => ch.value)
-
-  // validate at least one day
-  if (days.length === 0) {
-    alert('Select at least one day.')
+  // 1) Run validations
+  const { errors, code, days, start, end } = validateForm()
+  if (errors.length) {
+    showErrors(errors)
     return
   }
 
-  // validate time order
-  if (toMinutes(endTime) <= toMinutes(startTime)) {
-    alert('End time must be after start time.')
-    return
-  }
-
-  // add one entry per checked day
+  // 2) Add entries for each day
   days.forEach(day => {
-    const entry = new ClassEntry(code, day, startTime, endTime)
+    const entry = new ClassEntry(code, day, start, end)
     student.addClass(entry)
   })
 
-  // re-render filtered list and clear form
+  // 3) Re-render and reset
   applyFilter()
   form.reset()
 })
+
+;['code','startTime','endTime'].forEach(id =>
+  document.getElementById(id).addEventListener('input', clearErrors)
+)
+document.querySelectorAll('#day-group input').forEach(ch =>
+  ch.addEventListener('change', clearErrors)
+)
 
 // Event: Show List via Button
 listBtn.addEventListener('click', () => {
@@ -193,8 +238,7 @@ listBtn.addEventListener('click', () => {
 // Event: Reset Everything
 resetBtn.addEventListener('click', () => {
   student.enrolledClasses = []
-  renderList()
-  renderSummary()
+  applyFilter()      // this will call renderList([]) + renderSummary([])
 })
 
 // Initial render on page load

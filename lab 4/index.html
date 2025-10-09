@@ -8,8 +8,11 @@
 <body>
   <h2>Class Scheduling System</h2>
 
-  <form id="add-form">
-    <input id="code"       placeholder="Class Code" required>
+  <form id="add-form" novalidate>
+    <div id="error-container"></div>
+
+
+    <input id="code" placeholder="Class Code" required>
     <fieldset id="day-group">
     <legend>Days</legend>
     <label><input type="checkbox" value="Monday"> Mon</label>

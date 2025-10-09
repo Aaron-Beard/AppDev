@@ -1,0 +1,12 @@
+/* Container for all form errors */
+#error-container {
+  color: #c00;
+  margin-bottom: 1em;
+  font-size: 0.9em;
+  line-height: 1.4;
+}
+
+/* Red border for invalid inputs/selects/fieldset */
+.invalid {
+  border: 1px solid #c00;
+}
