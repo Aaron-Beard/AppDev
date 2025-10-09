@@ -98,6 +98,13 @@ const listDiv   = document.getElementById('list')
 const summaryDiv= document.getElementById('summary')
 const listBtn   = document.getElementById('list-btn')
 const resetBtn  = document.getElementById('reset-btn')
+const sortCodeBtn = document.getElementById('sort-code-btn')
+const sortDayBtn  = document.getElementById('sort-day-btn')
+
+let sortConfig = {
+  field: null,   // 'code' or 'day'
+  asc:   true
+}
 
 let editIndex = null
 
@@ -123,22 +130,22 @@ const filterDaySelect = document.getElementById('filter-day')
 
 // after you define form, submitBtn, editIndex…
 function attachEntryHandlers() {
-  // EDIT buttons
+  // EDIT
   document.querySelectorAll('.edit-btn').forEach(btn =>
     btn.addEventListener('click', onEditClick)
   )
 
-  // CANCEL buttons (only on the editing row)
+  // CANCEL
   document.querySelectorAll('.cancel-btn').forEach(btn =>
     btn.addEventListener('click', onCancelClick)
   )
 
-  // DELETE buttons
+  // DELETE w/ confirm
   document.querySelectorAll('.delete-btn').forEach(btn =>
     btn.addEventListener('click', e => {
-      const idx = Number(e.currentTarget.dataset.index)
+      const idx   = Number(e.currentTarget.dataset.index)
       const entry = student.enrolledClasses[idx]
-      const msg = `Delete class ${entry.code} on ${entry.day} (${entry.startTime}–${entry.endTime})?`
+      const msg   = `Delete class ${entry.code} on ${entry.day} (${entry.startTime}–${entry.endTime})?`
       if (confirm(msg)) {
         student.removeClass(idx)
         applyFilter()
@@ -146,6 +153,25 @@ function attachEntryHandlers() {
     })
   )
 }
+
+sortCodeBtn.addEventListener('click', () => {
+  sortConfig.field = 'code'
+  sortConfig.asc   = !sortConfig.asc
+  sortCodeBtn.textContent =
+    `Sort by Class Code ${sortConfig.asc ? '▲' : '▼'}`
+  // reset the other toggle arrow
+  sortDayBtn.textContent = 'Sort by Day ▲'
+  applyFilter()
+})
+
+sortDayBtn.addEventListener('click', () => {
+  sortConfig.field = 'day'
+  sortConfig.asc   = true    // <-- lowercase `true`
+  sortDayBtn.textContent = 'Sort by Day ▲'
+  sortCodeBtn.textContent = 'Sort by Class Code ▲'
+  applyFilter()
+})
+
 
 function onEditClick(e) {
   clearErrors()
@@ -183,32 +209,65 @@ function renderList(list = student.enrolledClasses) {
     return
   }
 
-  // 1) Sort by day index, then by start time
-  const sorted = [...list].sort((a, b) => {
-    const dayA = WEEKDAYS.indexOf(a.day)
-    const dayB = WEEKDAYS.indexOf(b.day)
-    if (dayA !== dayB) return dayA - dayB
-    return toMinutes(a.startTime) - toMinutes(b.startTime)
-  })
+  const isCodeSort = sortConfig.field === 'code'
+  let sorted, groups
 
-  // 2) Group classes by day
-  const groups = WEEKDAYS
-    .map(day => ({
-      day,
-      entries: sorted.filter(c => c.day === day)
+  if (isCodeSort) {
+    // 1) Sort by code → day → startTime
+    sorted = [...list].sort((a, b) => {
+      const cmp = a.code.localeCompare(b.code)
+      if (cmp !== 0) return sortConfig.asc ? cmp : -cmp
+
+      const dA = WEEKDAYS.indexOf(a.day)
+      const dB = WEEKDAYS.indexOf(b.day)
+      if (dA !== dB) return dA - dB
+
+      return toMinutes(a.startTime) - toMinutes(b.startTime)
+    })
+
+    // 2) Group by code
+    const codes = [...new Set(sorted.map(c => c.code))]
+    groups = codes.map(code => ({
+      label: code,
+      entries: sorted.filter(c => c.code === code)
     }))
-    .filter(group => group.entries.length > 0)
+  } else {
+    // 1) Sort by day → startTime
+    sorted = [...list].sort((a, b) => {
+      const dA = WEEKDAYS.indexOf(a.day)
+      const dB = WEEKDAYS.indexOf(b.day)
+      if (dA !== dB) return dA - dB
+      return toMinutes(a.startTime) - toMinutes(b.startTime)
+    })
 
-  // 3) Build HTML with headings per group
+    // 2) Group by day
+    groups = WEEKDAYS
+      .map(day => ({
+        label: day,
+        entries: sorted.filter(c => c.day === day)
+      }))
+      .filter(g => g.entries.length)
+  }
+
+  // 3) Render each group
   listDiv.innerHTML = groups
     .map(group => {
       const items = group.entries
         .map(c => {
-          const idx = student.enrolledClasses.indexOf(c)
+          const idx       = student.enrolledClasses.indexOf(c)
+          const isEditing = idx === editIndex
+
+          // Choose what to display before the time
+          const entryLabel = isCodeSort
+            ? c.day
+            : c.code
+
           return `
-            <div class="class-entry${idx === editIndex ? ' editing' : ''}">
-              <span>${c.code} - ${formatTime(c.startTime)}-${formatTime(c.endTime)}</span>
-              ${idx === editIndex
+            <div class="class-entry${isEditing ? ' editing' : ''}">
+              <span>
+                ${entryLabel} – ${formatTime(c.startTime)}–${formatTime(c.endTime)}
+              </span>
+              ${isEditing
                 ? `<button class="cancel-btn" data-index="${idx}">Cancel</button>`
                 : `<button class="edit-btn"   data-index="${idx}">Edit</button>`
               }
@@ -219,15 +278,14 @@ function renderList(list = student.enrolledClasses) {
         .join('')
 
       return `
-        <div class="day-group">
-          <h3>${group.day}</h3>
+        <div class="${isCodeSort ? 'code-group' : 'day-group'}">
+          <h3>${group.label}</h3>
           ${items}
         </div>
       `
     })
     .join('')
 
-  // 4) Reattach event handlers
   attachEntryHandlers()
 }
 
