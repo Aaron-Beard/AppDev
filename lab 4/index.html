@@ -8,66 +8,68 @@
 <body>
   <h2>Class Scheduling System</h2>
 
+  <!-- Student Management Section -->
   <div id="add-student-container">
     <label for="student-select">Student:</label>
     <select id="student-select"></select>
 
     <input type="text" id="student-name-input" placeholder="Student name">
-    <input type="text" id="student-id-input"   placeholder="Student ID">
+    <input type="text" id="student-id-input" placeholder="Student ID">
     <button type="button" id="add-student-btn">Add Student</button>
     <button type="button" id="delete-student-btn">Delete Student</button>
-
 
     <div id="student-error" class="error-container"></div>
   </div>
 
+  <!-- Class Entry Form -->
   <form id="add-form" novalidate>
     <div id="error-container"></div>
 
     <input id="code" placeholder="Class Code" required>
+    
     <fieldset id="day-group">
-    <legend>Days</legend>
-    <label><input type="checkbox" value="Monday"> Mon</label>
-    <label><input type="checkbox" value="Tuesday"> Tue</label>
-    <label><input type="checkbox" value="Wednesday"> Wed</label>
-    <label><input type="checkbox" value="Thursday"> Thu</label>
-    <label><input type="checkbox" value="Friday"> Fri</label>
-    <label><input type="checkbox" value="Saturday"> Sat</label>
-    <label><input type="checkbox" value="Sunday"> Sun</label>
+      <legend>Days</legend>
+      <label><input type="checkbox" value="Monday"> Mon</label>
+      <label><input type="checkbox" value="Tuesday"> Tue</label>
+      <label><input type="checkbox" value="Wednesday"> Wed</label>
+      <label><input type="checkbox" value="Thursday"> Thu</label>
+      <label><input type="checkbox" value="Friday"> Fri</label>
+      <label><input type="checkbox" value="Saturday"> Sat</label>
+      <label><input type="checkbox" value="Sunday"> Sun</label>
     </fieldset>
+    
     <label for="startTime">Start Time</label>
     <select id="startTime"></select>
+    
     <label for="endTime">End Time</label>
     <select id="endTime"></select>
+    
     <button type="submit">Add Class</button>
     <button type="button" id="reset-btn">Reset List</button>
   </form>
 
+  <!-- Controls Section -->
   <div id="controls">
-
-   <label for="filter-day">Filter Day:</label>
-   <select id="filter-day">
-     <option value="All">All Days</option>
-     <option value="Monday">Monday</option>
-     <option value="Tuesday">Tuesday</option>
-     <option value="Wednesday">Wednesday</option>
-     <option value="Thursday">Thursday</option>
-     <option value="Friday">Friday</option>
-     <option value="Saturday">Saturday</option>
-     <option value="Sunday">Sunday</option>
-   </select>
+    <label for="filter-day">Filter Day:</label>
+    <select id="filter-day">
+      <option value="All">All Days</option>
+      <option value="Monday">Monday</option>
+      <option value="Tuesday">Tuesday</option>
+      <option value="Wednesday">Wednesday</option>
+      <option value="Thursday">Thursday</option>
+      <option value="Friday">Friday</option>
+      <option value="Saturday">Saturday</option>
+      <option value="Sunday">Sunday</option>
+    </select>
+    
     <button id="sort-code-btn">Sort by Class Code ▲</button>
     <button id="sort-day-btn">Sort by Day ▲</button>
     <button type="button" id="toggle-view-btn">View as Table</button>
-
   </div>
 
-  <input
-      type="text"
-      id="search-input"
-      placeholder="Search classes…"
-    />
-
+  <!-- Search and Display -->
+  <input type="text" id="search-input" placeholder="Search classes…" />
+  
   <div id="list"></div>
   <div id="summary"></div>
 

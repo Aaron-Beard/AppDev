@@ -1,20 +1,130 @@
-// js/main.js
+// ===== CONSTANTS AND CONFIGURATION =====
 
-const WEEKDAYS = [
-  'Monday', 'Tuesday', 'Wednesday',
-  'Thursday', 'Friday', 'Saturday', 'Sunday'
-]
+// Array of all days for consistent ordering
+const WEEKDAYS = ['Monday', 'Tuesday', 'Wednesday', 'Thursday', 'Friday', 'Saturday', 'Sunday'];
 
-// 12–15 distinct colors for course codes
+// Color palette for class codes in table view
 const PALETTE = [
   '#A6CEE3', '#1F78B4', '#B2DF8A', '#33A02C',
   '#FB9A99', '#E31A1C', '#FDBF6F', '#FF7F00',
   '#CAB2D6', '#6A3D9A', '#FFFF99', '#B15928'
 ];
 
-const codeToColor   = {};
-let   nextColorIdx  = 0;
+// ===== DATA MANAGEMENT =====
 
+// Track colors assigned to each class code
+const codeToColor = {};
+let nextColorIdx = 0;
+
+// Represents a single class session
+class ClassEntry {
+  constructor(code, day, startTime, endTime) {
+    this.code = code;
+    this.day = day;
+    this.startTime = startTime;
+    this.endTime = endTime;
+  }
+}
+
+// Represents a student with their enrolled classes
+class Student {
+  constructor(name, id) {
+    this.name = name;
+    this.id = id;
+    this.enrolledClasses = [];
+  }
+
+  // Add a class with validation for time conflicts
+  addClass(newClass) {
+    // Validate end time is after start time
+    if (toMinutes(newClass.endTime) <= toMinutes(newClass.startTime)) {
+      return `End time must be after start time for ${newClass.code}.`;
+    }
+
+    // Check for time conflicts with existing classes
+    for (let existingClass of this.enrolledClasses) {
+      const hasConflict = 
+        existingClass.day === newClass.day &&
+        toMinutes(existingClass.startTime) < toMinutes(newClass.endTime) &&
+        toMinutes(newClass.startTime) < toMinutes(existingClass.endTime);
+
+      if (hasConflict) {
+        return `Time conflict with ${existingClass.code} on ${existingClass.day}.`;
+      }
+    }
+
+    this.enrolledClasses.push(newClass);
+    return null; // Success - no error
+  }
+
+  // Remove class by index
+  removeClass(index) {
+    this.enrolledClasses.splice(index, 1);
+  }
+
+  // Update existing class with validation
+  updateClass(index, updatedClass) {
+    const originalClass = this.enrolledClasses.splice(index, 1)[0];
+    const error = this.addClass(updatedClass);
+    
+    if (error) {
+      // Restore original class if update fails
+      this.enrolledClasses.splice(index, 0, originalClass);
+      return error;
+    }
+    
+    return null; // Success
+  }
+
+  // Generate summary text of all classes
+  listClasses() {
+    if (!this.enrolledClasses.length) {
+      return `${this.name} (${this.id}) has no classes.`;
+    }
+    
+    const classDescriptions = this.enrolledClasses.map(c =>
+      `${c.code} on ${c.day} ${formatTime(c.startTime)}–${formatTime(c.endTime)}`
+    );
+    
+    return `${this.name} (${this.id}) is enrolled in: ${classDescriptions.join('; ')}.`;
+  }
+}
+
+// ===== APPLICATION STATE =====
+
+// Initialize with a default student
+const students = [new Student('Timmy', '001')];
+let currentStudentId = students[0].id;
+
+// UI state management
+let sortConfig = { field: null, asc: true };
+let editIndex = null;
+let deleteStudentConfirm = false;
+let deleteStudentTimerId;
+let isTableView = false;
+
+// ===== DOM ELEMENT REFERENCES =====
+
+const form = document.getElementById('add-form');
+const listDiv = document.getElementById('list');
+const summaryDiv = document.getElementById('summary');
+const resetBtn = document.getElementById('reset-btn');
+const sortCodeBtn = document.getElementById('sort-code-btn');
+const sortDayBtn = document.getElementById('sort-day-btn');
+const submitBtn = form.querySelector('button[type=submit]');
+const filterDaySelect = document.getElementById('filter-day');
+const studentSelect = document.getElementById('student-select');
+const addStudentBtn = document.getElementById('add-student-btn');
+const studentNameInput = document.getElementById('student-name-input');
+const studentIdInput = document.getElementById('student-id-input');
+const studentErrorDiv = document.getElementById('student-error');
+const deleteStudentBtn = document.getElementById('delete-student-btn');
+const searchInput = document.getElementById('search-input');
+const toggleViewBtn = document.getElementById('toggle-view-btn');
+
+// ===== UTILITY FUNCTIONS =====
+
+// Assign consistent colors to class codes
 function getColorForCode(code) {
   if (!codeToColor[code]) {
     codeToColor[code] = PALETTE[nextColorIdx % PALETTE.length];
@@ -23,775 +133,570 @@ function getColorForCode(code) {
   return codeToColor[code];
 }
 
-// Populate time select elements with 15-min intervals
-function populateTimeSelects() {
-  const startSel = document.getElementById('startTime')
-  const endSel   = document.getElementById('endTime')
-  const times = []
-  for (let h = 3; h <= 23; h++) {              // from 03:00 to 23:45
-    for (let m = 0; m < 60; m += 15) {
-      const hh = String(h).padStart(2, '0')
-      const mm = String(m).padStart(2, '0')
-      times.push(`${hh}:${mm}`)
-    }
-  }
-  for (let t of times) {
-    const label = formatTime(t)
-    startSel.innerHTML += `<option value="${t}">${label}</option>`
-    endSel.innerHTML   += `<option value="${t}">${label}</option>`
-  }
+// Convert time string "HH:MM" to minutes since midnight
+function toMinutes(timeString) {
+  const [hours, minutes] = timeString.split(':').map(Number);
+  return hours * 60 + minutes;
 }
 
-// Convert "HH:MM" → "h:MM AM/PM"
+// Format "HH:MM" as "h:MM AM/PM"
 function formatTime(hhmm) {
-  const [h, m] = hhmm.split(':').map(Number)
-  const suffix = h < 12 ? 'AM' : 'PM'
-  const hour12 = ((h + 11) % 12) + 1  // maps 0→12, 13→1, etc.
-  return `${hour12}:${String(m).padStart(2, '0')} ${suffix}`
+  const [hour, minute] = hhmm.split(':').map(Number);
+  const period = hour < 12 ? 'AM' : 'PM';
+  const displayHour = ((hour + 11) % 12) + 1;
+  return `${displayHour}:${String(minute).padStart(2, '0')} ${period}`;
 }
 
-// Convert "HH:MM" → minutes
-function toMinutes(t) {
-  const [h, m] = t.split(':').map(Number)
-  return h * 60 + m
-}
-
-class ClassEntry {
-  constructor(code, day, startTime, endTime) {
-    this.code      = code
-    this.day       = day
-    this.startTime = startTime
-    this.endTime   = endTime
-  }
-}
-
-class Student {
-  constructor(name, id) {
-    this.name            = name
-    this.id              = id
-    this.enrolledClasses = []
-  }
-
-  addClass(newClass) {
-    // 1. Ensure endTime > startTime
-    if (toMinutes(newClass.endTime) <= toMinutes(newClass.startTime)) {
-      return `End time must be after start time for ${newClass.code}.`
-    }
-
-    // 2. Time-conflict check
-    for (let c of this.enrolledClasses) {
-      const overlap =
-      c.day === newClass.day &&
-      toMinutes(c.startTime) < toMinutes(newClass.endTime) &&
-      toMinutes(newClass.startTime) < toMinutes(c.endTime) 
-
-    if (overlap) { 
-      return `Time conflict with ${c.code} on ${c.day}.`
-    }
-  }
-    this.enrolledClasses.push(newClass)
-    return null  // success
-  }
-
-  removeClass(index) {
-    this.enrolledClasses.splice(index, 1)
-  }
-
-
-  updateClass(index, newClass) {
-    // returns null on success, or an error message string on failure
-    const old = this.enrolledClasses.splice(index, 1)[0]
-    const err = this.addClass(newClass)
-    if (err) {
-      this.enrolledClasses.splice(index, 0, old)
-    return err
-    }
-    return null
-  }
-
-  listClasses() {
-    if (!this.enrolledClasses.length) {
-      return `${this.name} (${this.id}) has no classes.`
-    }
-    const parts = this.enrolledClasses.map(c =>
-      `${c.code} on ${c.day} ${formatTime(c.startTime)}–${formatTime(c.endTime)}`
-    )
-    return `${this.name} (${this.id}) is enrolled in: ${parts.join('; ')}.`
-  }
-}
-
-
-
-
-// ——— Multi-student support ———
-const students = [ new Student('Timmy','001') ]
-let currentStudentId = students[0].id
-
+// Get currently selected student
 function getCurrentStudent() {
-  return students.find(s => s.id === currentStudentId)
+  return students.find(student => student.id === currentStudentId);
 }
 
-
-// References to DOM elements
-const form      = document.getElementById('add-form')
-const listDiv   = document.getElementById('list')
-console.log('✔ listDiv is', listDiv)
-
-const summaryDiv= document.getElementById('summary')
-const resetBtn  = document.getElementById('reset-btn')
-const sortCodeBtn = document.getElementById('sort-code-btn')
-const sortDayBtn  = document.getElementById('sort-day-btn')
-const submitBtn = form.querySelector('button[type=submit]')
-const filterDaySelect = document.getElementById('filter-day')
-const studentSelect   = document.getElementById('student-select')
-const addStudentBtn   = document.getElementById('add-student-btn')
-const studentNameInput = document.getElementById('student-name-input')
-const studentIdInput   = document.getElementById('student-id-input')
-const studentErrorDiv  = document.getElementById('student-error')
-const deleteStudentBtn      = document.getElementById('delete-student-btn')
-const searchInput = document.getElementById('search-input')
-const toggleViewBtn = document.getElementById('toggle-view-btn');
-
-let sortConfig = {
-  field: null,   // 'code' or 'day'
-  asc:   true
+// Clear all error displays
+function clearErrors() {
+  document.getElementById('error-container').innerHTML = '';
+  document.querySelectorAll('.invalid').forEach(element => {
+    element.classList.remove('invalid');
+  });
 }
 
-let editIndex = null
-let   deleteStudentConfirm  = false
-let   deleteStudentTimerId
-let   isTableView   = false;
+// ===== TIME SELECT POPULATION =====
 
-searchInput.addEventListener('input', applyFilter)
+// Fill time dropdowns with 15-minute intervals
+function populateTimeSelects() {
+  const startSelect = document.getElementById('startTime');
+  const endSelect = document.getElementById('endTime');
+  const timeOptions = [];
 
-// Populate the dropdown
-function refreshStudentDropdown() {
-  studentSelect.innerHTML = students
-    .map(s => `<option value="${s.id}">${s.name} (${s.id})</option>`)
-    .join('')
-  studentSelect.value = currentStudentId
-}
-refreshStudentDropdown()
-
-// Switch active student
-studentSelect.addEventListener('change', () => {
-  currentStudentId = studentSelect.value
-  applyFilter()
-})
-
-// Add a new student
-addStudentBtn.addEventListener('click', () => {
-  // clear any previous student‐add errors
-  studentErrorDiv.innerText = ''
-
-  const name = studentNameInput.value.trim()
-  const id   = studentIdInput.value.trim()
-
-  // Validate and show inline error
-  if (!name || !id || students.some(s => s.id === id)) {
-    studentErrorDiv.innerText = 'Invalid or duplicate student name/ID'
-    return
+  // Generate times from 03:00 to 23:45
+  for (let hour = 3; hour <= 23; hour++) {
+    for (let minute = 0; minute < 60; minute += 15) {
+      const timeString = `${String(hour).padStart(2, '0')}:${String(minute).padStart(2, '0')}`;
+      timeOptions.push(timeString);
+    }
   }
 
-  const s = new Student(name, id)
-  students.push(s)
-  currentStudentId = id
-  refreshStudentDropdown()
-  applyFilter()
-
-  // clear the inputs on success
-  studentNameInput.value = ''
-  studentIdInput.value   = ''
-})
-
-deleteStudentBtn.addEventListener('click', () => {
-  if (!deleteStudentConfirm) {
-    deleteStudentConfirm = true
-    deleteStudentBtn.textContent = 'Confirm Delete'
-    deleteStudentBtn.classList.add('confirming')
-
-    deleteStudentTimerId = setTimeout(() => {
-      deleteStudentConfirm = false
-      deleteStudentBtn.textContent = 'Delete Student'
-      deleteStudentBtn.classList.remove('confirming')
-    }, 5000)
-
-  } else {
-    clearTimeout(deleteStudentTimerId)
-
-    // 1) Remove from array
-    const idx = students.findIndex(s => s.id === currentStudentId)
-    if (idx > -1) students.splice(idx, 1)
-
-    // 2) Reset the delete‐button back to normal immediately
-    deleteStudentConfirm = false
-    deleteStudentBtn.textContent = 'Delete Student'
-    deleteStudentBtn.classList.remove('confirming')
-
-     // 3) Pick new currentStudentId (first student or null)
-     if (students.length) {
-       currentStudentId = students[0].id
-     } else {
-       currentStudentId = null
-     }
-
-     // 4) Refresh UI
-     refreshStudentDropdown()
-     applyFilter()
-   }
- })
-
- toggleViewBtn.addEventListener('click', () => {
-  // Flip the view mode
-  isTableView = !isTableView;
-  console.log('🛠 toggle clicked → isTableView =', isTableView);
-
-  // Update the button label
-  toggleViewBtn.textContent = isTableView 
-    ? 'View as List'
-    : 'View as Table';
-
-  // Hide or show the list-only controls
-  // (replace these IDs with whatever you’ve named them)
-  sortCodeBtn.hidden  = isTableView;
-  sortDayBtn.hidden   = isTableView;
-  submitBtn.hidden  = isTableView;
-  deleteStudentBtn.hidden = isTableView;
-
-  // Re-run your filter+render pipeline
-  applyFilter();
-});
-
-// Remove any existing highlight
-function clearHighlight() {
-  document.querySelectorAll('.class-entry.editing').forEach(el =>
-    el.classList.remove('editing')
-  );
+  // Add options to both dropdowns
+  timeOptions.forEach(time => {
+    const option = `<option value="${time}">${formatTime(time)}</option>`;
+    startSelect.innerHTML += option;
+    endSelect.innerHTML += option;
+  });
 }
 
-// Highlight the entry matching a given index
-function highlightEntryByIndex(idx) {
-  clearHighlight();
-  const btn = document.querySelector(`.edit-btn[data-index="${idx}"]`);
-  if (!btn) return;
-  const entryDiv = btn.closest('.class-entry');
-  if (entryDiv) entryDiv.classList.add('editing');
-}
+// ===== RENDERING FUNCTIONS =====
 
-// after you define form, submitBtn, editIndex…
-function attachEntryHandlers() {
-  // EDIT
-  document.querySelectorAll('.edit-btn').forEach(btn =>
-    btn.addEventListener('click', onEditClick)
-  )
-
-  // CANCEL
-  document.querySelectorAll('.cancel-btn').forEach(btn =>
-    btn.addEventListener('click', onCancelClick)
-  )
-
-  // DELETE w/ two-step confirmation
-  document.querySelectorAll('.delete-btn').forEach(btn => {
-    let deleteTimerId
-
-    btn.addEventListener('click', e => {
-      // 1st click → flip into “Confirm Delete” mode
-      if (!btn.classList.contains('confirming')) {
-        btn.classList.add('confirming')
-        btn.textContent = 'Confirm Delete'
-
-        // auto-revert after 5s
-        deleteTimerId = setTimeout(() => {
-          btn.classList.remove('confirming')
-          btn.textContent = 'Delete'
-        }, 5000)
-
-      } else {
-        // 2nd click → actually delete
-        clearTimeout(deleteTimerId)
-
-        const idx = Number(e.currentTarget.dataset.index)
-        getCurrentStudent().removeClass(idx)
-        applyFilter()
-      }
-    })
-  })
-}
-
-sortCodeBtn.addEventListener('click', () => {
-  sortConfig.field = 'code'
-  sortConfig.asc   = !sortConfig.asc
-  sortCodeBtn.textContent =
-    `Sort by Class Code ${sortConfig.asc ? '▲' : '▼'}`
-  // reset the other toggle arrow
-  sortDayBtn.textContent = 'Sort by Day ▲'
-  applyFilter()
-})
-
-sortDayBtn.addEventListener('click', () => {
-  sortConfig.field = 'day'
-  sortConfig.asc   = true    // <-- lowercase `true`
-  sortDayBtn.textContent = 'Sort by Day ▲'
-  sortCodeBtn.textContent = 'Sort by Class Code ▲'
-  applyFilter()
-})
-
-function startEditSession(idx) {
-  editIndex = idx
-  const cls = getCurrentStudent().enrolledClasses[idx]
-
-  // Prefill form fields
-  document.getElementById('code').value      = cls.code
-  document.getElementById('startTime').value = cls.startTime
-  document.getElementById('endTime').value   = cls.endTime
-
-  // Check only the correct day checkbox
-  document
-    .querySelectorAll('#day-group input[type=checkbox]')
-    .forEach(cb => {
-      cb.checked = (cb.value === cls.day)
-    })
-
-  // Switch submit button label
-  submitBtn.textContent = 'Save Changes'
-
-  // Highlight the editing row
-  applyFilter()
-
-  // Remove the selector UI, if still present
-  document.getElementById('edit-select-container').innerHTML = ''
-}
-
-function onEditClick(e) {
-  clearErrors()
-  editIndex = Number(e.currentTarget.dataset.index)
-  highlightEntryByIndex(editIndex)
-
-  const entry = getCurrentStudent().enrolledClasses[editIndex]
-  document.getElementById('code').value = entry.code
-  document.querySelectorAll('#day-group input').forEach(ch =>
-    ch.checked = ch.value === entry.day
-  )
-  document.getElementById('startTime').value = entry.startTime
-  document.getElementById('endTime').value   = entry.endTime
-
-  submitBtn.textContent = 'Update Class'
-  applyFilter()  // to show Cancel button
-}
-
-function onCancelClick(e) {
-  editIndex = null
-  clearErrors()
-  clearHighlight()
-
-  submitBtn.textContent = 'Add Class'
-  form.reset()
-
-  // Re-render so that Cancel button disappears
-  applyFilter()
-}
-
-// Render functions
-function renderList(list = getCurrentStudent().enrolledClasses) {
-  if (!list.length) {
-    listDiv.innerText = 'No classes enrolled.'
-    return
+// Render class list in grouped view
+function renderList(classList = getCurrentStudent().enrolledClasses) {
+  if (!classList.length) {
+    listDiv.innerText = 'No classes enrolled.';
+    return;
   }
 
-  const isCodeSort = sortConfig.field === 'code'
-  let sorted, groups
+  let sortedClasses, groupedClasses;
 
-  if (isCodeSort) {
-    // 1) Sort by code → day → startTime
-    sorted = [...list].sort((a, b) => {
-      const cmp = a.code.localeCompare(b.code)
-      if (cmp !== 0) return sortConfig.asc ? cmp : -cmp
+  if (sortConfig.field === 'code') {
+    // Sort by code, then day, then time
+    sortedClasses = [...classList].sort((a, b) => {
+      const codeCompare = a.code.localeCompare(b.code);
+      if (codeCompare !== 0) return sortConfig.asc ? codeCompare : -codeCompare;
 
-      const dA = WEEKDAYS.indexOf(a.day)
-      const dB = WEEKDAYS.indexOf(b.day)
-      if (dA !== dB) return dA - dB
+      const dayA = WEEKDAYS.indexOf(a.day);
+      const dayB = WEEKDAYS.indexOf(b.day);
+      if (dayA !== dayB) return dayA - dayB;
 
-      return toMinutes(a.startTime) - toMinutes(b.startTime)
-    })
+      return toMinutes(a.startTime) - toMinutes(b.startTime);
+    });
 
-    // 2) Group by code
-    const codes = [...new Set(sorted.map(c => c.code))]
-    groups = codes.map(code => ({
+    // Group by class code
+    const uniqueCodes = [...new Set(sortedClasses.map(c => c.code))];
+    groupedClasses = uniqueCodes.map(code => ({
       label: code,
-      entries: sorted.filter(c => c.code === code)
-    }))
+      entries: sortedClasses.filter(c => c.code === code)
+    }));
   } else {
-    // 1) Sort by day → startTime
-    sorted = [...list].sort((a, b) => {
-      const dA = WEEKDAYS.indexOf(a.day)
-      const dB = WEEKDAYS.indexOf(b.day)
-      if (dA !== dB) return dA - dB
-      return toMinutes(a.startTime) - toMinutes(b.startTime)
-    })
+    // Sort by day, then time (always chronological)
+    sortedClasses = [...classList].sort((a, b) => {
+      const dayA = WEEKDAYS.indexOf(a.day);
+      const dayB = WEEKDAYS.indexOf(b.day);
+      if (dayA !== dayB) return dayA - dayB;
+      return toMinutes(a.startTime) - toMinutes(b.startTime);
+    });
 
-    // 2) Group by day
-    groups = WEEKDAYS
+    // Group by day
+    groupedClasses = WEEKDAYS
       .map(day => ({
         label: day,
-        entries: sorted.filter(c => c.day === day)
+        entries: sortedClasses.filter(c => c.day === day)
       }))
-      .filter(g => g.entries.length)
+      .filter(group => group.entries.length);
   }
 
-  // 3) Render each group
-  listDiv.innerHTML = groups
-    .map(group => {
-      const items = group.entries
-        .map(c => {
-          const idx       = getCurrentStudent().enrolledClasses.indexOf(c)
-          const isEditing = idx === editIndex
-
-          const startsBeforeNine = toMinutes(c.startTime) < 9 * 60;
-          const endsAfterFive    = toMinutes(c.endTime)   > 17 * 60;
-
-          // Choose what to display before the time
-          const entryLabel = isCodeSort
-            ? c.day
-            : c.code
-
-          return `
-            <div class="class-entry${isEditing ? ' editing' : ''}
-            ${startsBeforeNine ? ' before-nine' : ''}
-            ${endsAfterFive    ? ' after-five'  : ''}">
-              <span>
-                ${entryLabel} - ${formatTime(c.startTime)}-${formatTime(c.endTime)}
-              </span>
-              ${isEditing
-                ? `<button class="cancel-btn" data-index="${idx}">Cancel</button>`
-                : `<button class="edit-btn"   data-index="${idx}">Edit</button>`
-              }
-              <button class="delete-btn" data-index="${idx}">Delete</button>
-            </div>
-          `
-        })
-        .join('')
+  // Generate HTML for groups and entries
+  listDiv.innerHTML = groupedClasses.map(group => {
+    const isCodeGrouped = sortConfig.field === 'code';
+    const entriesHtml = group.entries.map(classEntry => {
+      const entryIndex = getCurrentStudent().enrolledClasses.indexOf(classEntry);
+      const isBeingEdited = entryIndex === editIndex;
+      
+      const startsEarly = toMinutes(classEntry.startTime) < 9 * 60;
+      const endsLate = toMinutes(classEntry.endTime) > 17 * 60;
+      
+      const displayLabel = isCodeGrouped ? classEntry.day : classEntry.code;
 
       return `
-        <div class="${isCodeSort ? 'code-group' : 'day-group'}">
-          <h3>${group.label}</h3>
-          ${items}
+        <div class="class-entry${isBeingEdited ? ' editing' : ''} 
+                      ${startsEarly ? ' before-nine' : ''} 
+                      ${endsLate ? ' after-five' : ''}">
+          <span>${displayLabel} - ${formatTime(classEntry.startTime)}-${formatTime(classEntry.endTime)}</span>
+          ${isBeingEdited 
+            ? `<button class="cancel-btn" data-index="${entryIndex}">Cancel</button>`
+            : `<button class="edit-btn" data-index="${entryIndex}">Edit</button>`
+          }
+          <button class="delete-btn" data-index="${entryIndex}">Delete</button>
         </div>
-      `
-    })
-    .join('')
+      `;
+    }).join('');
 
-  attachEntryHandlers()
+    return `
+      <div class="${isCodeGrouped ? 'code-group' : 'day-group'}">
+        <h3>${group.label}</h3>
+        ${entriesHtml}
+      </div>
+    `;
+  }).join('');
+
+  attachEntryHandlers();
 }
 
-function renderTable(list) {
-
-  // 1) No classes?
-  if (!list.length) {
+// Render schedule as timetable
+function renderTable(classList) {
+  if (!classList.length) {
     listDiv.innerHTML = '<div>No classes enrolled.</div>';
     return;
   }
 
-  // 2) Determine columns (Mon–Fri always, plus Sat/Sun if needed)
-  const days = ['Monday','Tuesday','Wednesday','Thursday','Friday'];
-  if (list.some(c => c.day === 'Saturday')) days.push('Saturday');
-  if (list.some(c => c.day === 'Sunday'))   days.push('Sunday');
+  // Determine which days to show
+  const daysToShow = ['Monday', 'Tuesday', 'Wednesday', 'Thursday', 'Friday'];
+  if (classList.some(c => c.day === 'Saturday')) daysToShow.push('Saturday');
+  if (classList.some(c => c.day === 'Sunday')) daysToShow.push('Sunday');
 
-  // 3) Find time range (already multiples of 15)
-  const startTimes = list.map(c => toMinutes(c.startTime));
-  const endTimes   = list.map(c => toMinutes(c.endTime));
-  const minTime    = Math.min(...startTimes);
-  const maxTime    = Math.max(...endTimes);
+  // Calculate time range
+  const startTimes = classList.map(c => toMinutes(c.startTime));
+  const endTimes = classList.map(c => toMinutes(c.endTime));
+  const earliestTime = Math.min(...startTimes);
+  const latestTime = Math.max(...endTimes);
 
-  // 4) Build the full array of 15-min slots
-  const slots = [];
-  for (let t = minTime; t < maxTime; t += 15) {
-    slots.push(t);
+  // Generate 15-minute time slots
+  const timeSlots = [];
+  for (let time = earliestTime; time < latestTime; time += 15) {
+    timeSlots.push(time);
   }
 
-  // 5) Reset color map for fresh render
-  Object.keys(codeToColor).forEach(k => delete codeToColor[k]);
+  // Reset color mapping for fresh render
+  Object.keys(codeToColor).forEach(key => delete codeToColor[key]);
   nextColorIdx = 0;
-  list.forEach(c => getColorForCode(c.code));
+  classList.forEach(c => getColorForCode(c.code));
 
-  // 6) Prepare skip counters per day
-  const skipCount = {};
-  days.forEach(d => skipCount[d] = 0);
+  // Track row spans for multi-slot classes
+  const skipCounters = {};
+  daysToShow.forEach(day => { skipCounters[day] = 0; });
 
-  // 7) Build table rows
-  const rowsHtml = slots.map(slot => {
-    const hours = Math.floor(slot / 60);
-    const minutes  = slot % 60;
-    const hhmm    = `${String(hours).padStart(2,'0')}:${String(minutes).padStart(2,'0')}`;
-    const timeLabel = formatTime(hhmm);
+  // Build table rows
+  const tableRows = timeSlots.map(slotTime => {
+    const hours = Math.floor(slotTime / 60);
+    const minutes = slotTime % 60;
+    const timeString = `${String(hours).padStart(2, '0')}:${String(minutes).padStart(2, '0')}`;
+    
+    // Only show time label on 30-minute boundaries
+    const timeLabel = slotTime % 30 === 0 ? formatTime(timeString) : '';
 
-    // Start the row with the time label cell (only on 30-min boundaries)
-    let row = `<tr>
-      <td class="time-cell">${slot % 30 === 0 ? timeLabel : ''}</td>`;
+    let rowHtml = `<tr><td class="time-cell">${timeLabel}</td>`;
 
-    // For each day column
-    days.forEach(day => {
-      // If we’re skipping this slot (part of an earlier rowspan), decrement & continue
-      if (skipCount[day] > 0) {
-        skipCount[day]--;
+    daysToShow.forEach(day => {
+      if (skipCounters[day] > 0) {
+        skipCounters[day]--;
         return;
       }
 
-      // Find a class that starts at this slot & day
-      const cls = list.find(c =>
-        c.day === day && toMinutes(c.startTime) === slot
+      const classAtSlot = classList.find(c => 
+        c.day === day && toMinutes(c.startTime) === slotTime
       );
 
-      if (cls) {
-        // Compute how many rows it should span
-        const span = (toMinutes(cls.endTime) - toMinutes(cls.startTime)) / 15;
-        skipCount[day] = span - 1;
+      if (classAtSlot) {
+        const duration = toMinutes(classAtSlot.endTime) - toMinutes(classAtSlot.startTime);
+        const rowSpan = duration / 15;
+        skipCounters[day] = rowSpan - 1;
 
-        const color = getColorForCode(cls.code);
-        row += `
-          <td rowspan="${span}"
-              class="class-cell"
-              style="background-color: ${color};">
-            <strong>${cls.code}</strong><br>
-            ${formatTime(cls.startTime)}–${formatTime(cls.endTime)}
+        const color = getColorForCode(classAtSlot.code);
+        rowHtml += `
+          <td rowspan="${rowSpan}" class="class-cell" style="background-color: ${color};">
+            <strong>${classAtSlot.code}</strong><br>
+            ${formatTime(classAtSlot.startTime)}–${formatTime(classAtSlot.endTime)}
           </td>`;
       } else {
-        // Empty slot
-        row += `<td></td>`;
+        rowHtml += `<td></td>`;
       }
     });
 
-    row += '</tr>';
-    return row;
+    rowHtml += '</tr>';
+    return rowHtml;
   }).join('');
 
-  // 8) Construct full table HTML
-  const headerCells = days.map(d => `<th>${d.slice(0,3)}</th>`).join('');
+  // Build complete table
+  const headerCells = daysToShow.map(day => `<th>${day.slice(0, 3)}</th>`).join('');
   listDiv.innerHTML = `
     <table class="schedule-table">
       <thead>
         <tr>
-          <th></th>
-          ${headerCells}
+          <th></th>${headerCells}
         </tr>
       </thead>
-      <tbody>
-        ${rowsHtml}
-      </tbody>
+      <tbody>${tableRows}</tbody>
     </table>`;
 }
 
-function renderSummary(list = getCurrentStudent().enrolledClasses) {
+// Display class summary information
+function renderSummary(classList = getCurrentStudent().enrolledClasses) {
   const student = getCurrentStudent();
-  const nameId  = `${student.name} (${student.id})`;
+  const studentInfo = `${student.name} (${student.id})`;
 
-  if (list.length === 0) {
-    summaryDiv.innerText = `${nameId} has no classes.`;
+  if (!classList.length) {
+    summaryDiv.innerText = `${studentInfo} has no classes.`;
     return;
   }
 
-  // 1) Count of classes
-  const count = list.length;
-
-  // 2) Sum total minutes
-  const totalMinutes = list.reduce(
-    (sum, c) => sum + (toMinutes(c.endTime) - toMinutes(c.startTime)),
+  const totalMinutes = classList.reduce(
+    (sum, classEntry) => sum + (toMinutes(classEntry.endTime) - toMinutes(classEntry.startTime)),
     0
   );
 
-  // 3) Convert to decimal hours, rounded to two decimals
-  const totalHours = totalMinutes / 60;
-  const hoursDecimal = Math.round(totalHours * 100) / 100;
+  const totalHours = Math.round((totalMinutes / 60) * 100) / 100;
+  const classCount = classList.length;
 
-  // 4) Render
-  summaryDiv.innerText =
-    `${nameId} has ${count} ${count === 1 ? 'class' : 'classes'} ` +
-    `totaling ${hoursDecimal} hour${hoursDecimal === 1 ? '' : 's'}.`;
+  summaryDiv.innerText = 
+    `${studentInfo} has ${classCount} ${classCount === 1 ? 'class' : 'classes'} ` +
+    `totaling ${totalHours} hour${totalHours === 1 ? '' : 's'}.`;
 }
 
+// ===== FILTERING AND SORTING =====
 
+// Apply current filters and render appropriate view
 function applyFilter() {
-  const day    = filterDaySelect.value;
-  const term   = searchInput.value.trim().toUpperCase();
-  let   list   = getCurrentStudent().enrolledClasses;
+  const selectedDay = filterDaySelect.value;
+  const searchTerm = searchInput.value.trim().toUpperCase();
+  let filteredClasses = getCurrentStudent().enrolledClasses;
 
-  // 1) Filter by day
-  if (day !== 'All') {
-    list = list.filter(c => c.day === day);
+  // Filter by day
+  if (selectedDay !== 'All') {
+    filteredClasses = filteredClasses.filter(c => c.day === selectedDay);
   }
 
-  // 2) Filter by live-search term
-  if (term) {
-    list = list.filter(c => 
-      c.code.toUpperCase().includes(term)
+  // Filter by search term
+  if (searchTerm) {
+    filteredClasses = filteredClasses.filter(c => 
+      c.code.toUpperCase().includes(searchTerm)
     );
   }
 
-  // 3) Render in the active view mode
+  // Render in current view mode
   if (isTableView) {
-    console.log('🛠 rendering TABLE');
-    renderTable(list);
+    renderTable(filteredClasses);
   } else {
-    console.log('🛠 rendering LIST');
-    renderList(list);
+    renderList(filteredClasses);
   }
 
-  // 4) Always update the summary below
-  renderSummary(list);
+  renderSummary(filteredClasses);
 }
 
-filterDaySelect.addEventListener('change', applyFilter)
+// ===== EVENT HANDLERS =====
 
-// Clear all previous errors and invalid markers
-function clearErrors() {
-  document.getElementById('error-container').innerHTML = ''
-  // remove .invalid from any element
-  document.querySelectorAll('.invalid').forEach(el =>
-    el.classList.remove('invalid')
-  )
+// Attach handlers to dynamically created class entry buttons
+function attachEntryHandlers() {
+  // Edit buttons
+  document.querySelectorAll('.edit-btn').forEach(button => {
+    button.addEventListener('click', function(event) {
+      clearErrors();
+      editIndex = Number(event.currentTarget.dataset.index);
+      
+      const classToEdit = getCurrentStudent().enrolledClasses[editIndex];
+      document.getElementById('code').value = classToEdit.code;
+      document.getElementById('startTime').value = classToEdit.startTime;
+      document.getElementById('endTime').value = classToEdit.endTime;
+      
+      // Set the correct day checkbox
+      document.querySelectorAll('#day-group input').forEach(checkbox => {
+        checkbox.checked = checkbox.value === classToEdit.day;
+      });
+
+      submitBtn.textContent = 'Update Class';
+      applyFilter();
+    });
+  });
+
+  // Cancel edit buttons
+  document.querySelectorAll('.cancel-btn').forEach(button => {
+    button.addEventListener('click', function() {
+      editIndex = null;
+      clearErrors();
+      submitBtn.textContent = 'Add Class';
+      form.reset();
+      applyFilter();
+    });
+  });
+
+  // Delete buttons with confirmation
+  document.querySelectorAll('.delete-btn').forEach(button => {
+    let deleteTimeout;
+
+    button.addEventListener('click', function(event) {
+      if (!button.classList.contains('confirming')) {
+        // First click - show confirmation
+        button.classList.add('confirming');
+        button.textContent = 'Confirm Delete';
+
+        deleteTimeout = setTimeout(() => {
+          button.classList.remove('confirming');
+          button.textContent = 'Delete';
+        }, 5000);
+      } else {
+        // Second click - actually delete
+        clearTimeout(deleteTimeout);
+        const indexToDelete = Number(event.currentTarget.dataset.index);
+        getCurrentStudent().removeClass(indexToDelete);
+        applyFilter();
+      }
+    });
+  });
 }
 
-// Display a list of error messages
-function showErrors(errors) {
-  const container = document.getElementById('error-container')
-  container.innerHTML = errors
-    .map(msg => `<div>${msg}</div>`)
-    .join('')
+// Update student dropdown with current student list
+function refreshStudentDropdown() {
+  studentSelect.innerHTML = students
+    .map(student => `<option value="${student.id}">${student.name} (${student.id})</option>`)
+    .join('');
+  studentSelect.value = currentStudentId;
 }
 
-// Return an array of validation messages
+// Validate form inputs
 function validateForm() {
-  const errors = []
-  const code = document.getElementById('code').value.trim()
-  const days = Array.from(
-    document.querySelectorAll('#day-group input[type=checkbox]')
-  )
-  .filter(ch => ch.checked)
-  .map(ch => ch.value)
-  const start = document.getElementById('startTime').value
-  const end   = document.getElementById('endTime').value
+  const errors = [];
+  const codeValue = document.getElementById('code').value.trim();
+  const checkedDays = Array.from(document.querySelectorAll('#day-group input:checked'))
+    .map(checkbox => checkbox.value);
+  const startValue = document.getElementById('startTime').value;
+  const endValue = document.getElementById('endTime').value;
 
-  if (!code) {
-    errors.push('Class code is required.')
-    document.getElementById('code').classList.add('invalid')
+  if (!codeValue) {
+    errors.push('Class code is required.');
+    document.getElementById('code').classList.add('invalid');
   }
 
-  if (days.length === 0) {
-    errors.push('Select at least one day.')
-    document.getElementById('day-group').classList.add('invalid')
+  if (checkedDays.length === 0) {
+    errors.push('Select at least one day.');
+    document.getElementById('day-group').classList.add('invalid');
   }
 
-  if (!start || !end) {
-    errors.push('Both start time and end time are required.')
-    if (!start) document.getElementById('startTime').classList.add('invalid')
-    if (!end)   document.getElementById('endTime').classList.add('invalid')
-  } else if (toMinutes(end) <= toMinutes(start)) {
-    errors.push('End time must be after start time.')
-    document.getElementById('startTime').classList.add('invalid')
-    document.getElementById('endTime').classList.add('invalid')
+  if (!startValue || !endValue) {
+    errors.push('Both start time and end time are required.');
+    if (!startValue) document.getElementById('startTime').classList.add('invalid');
+    if (!endValue) document.getElementById('endTime').classList.add('invalid');
+  } else if (toMinutes(endValue) <= toMinutes(startValue)) {
+    errors.push('End time must be after start time.');
+    document.getElementById('startTime').classList.add('invalid');
+    document.getElementById('endTime').classList.add('invalid');
   }
 
-  return { errors, code, days, start, end }
+  return { errors, codeValue, checkedDays, startValue, endValue };
 }
 
-// Event: Form Submission
-form.addEventListener('submit', e => {
-  e.preventDefault()
-  clearErrors()
+// ===== EVENT LISTENER SETUP =====
 
-  const { errors, code, days, start, end } = validateForm()
+// Student management events
+studentSelect.addEventListener('change', () => {
+  currentStudentId = studentSelect.value;
+  applyFilter();
+});
+
+addStudentBtn.addEventListener('click', () => {
+  studentErrorDiv.innerText = '';
+  const name = studentNameInput.value.trim();
+  const id = studentIdInput.value.trim();
+
+  if (!name || !id || students.some(s => s.id === id)) {
+    studentErrorDiv.innerText = 'Invalid or duplicate student name/ID';
+    return;
+  }
+
+  const newStudent = new Student(name, id);
+  students.push(newStudent);
+  currentStudentId = id;
+  refreshStudentDropdown();
+  applyFilter();
+
+  studentNameInput.value = '';
+  studentIdInput.value = '';
+});
+
+deleteStudentBtn.addEventListener('click', () => {
+  if (!deleteStudentConfirm) {
+    deleteStudentConfirm = true;
+    deleteStudentBtn.textContent = 'Confirm Delete';
+    deleteStudentBtn.classList.add('confirming');
+
+    deleteStudentTimerId = setTimeout(() => {
+      deleteStudentConfirm = false;
+      deleteStudentBtn.textContent = 'Delete Student';
+      deleteStudentBtn.classList.remove('confirming');
+    }, 5000);
+  } else {
+    clearTimeout(deleteStudentTimerId);
+    deleteStudentConfirm = false;
+    deleteStudentBtn.textContent = 'Delete Student';
+    deleteStudentBtn.classList.remove('confirming');
+
+    const studentIndex = students.findIndex(s => s.id === currentStudentId);
+    if (studentIndex > -1) students.splice(studentIndex, 1);
+
+    currentStudentId = students.length ? students[0].id : null;
+    refreshStudentDropdown();
+    applyFilter();
+  }
+});
+
+// Sorting events
+sortCodeBtn.addEventListener('click', () => {
+  sortConfig.field = 'code';
+  sortConfig.asc = !sortConfig.asc;
+  sortCodeBtn.textContent = `Sort by Class Code ${sortConfig.asc ? '▲' : '▼'}`;
+  sortDayBtn.textContent = 'Sort by Day ▲';
+  applyFilter();
+});
+
+// Day sorting - always chronological (no descending)
+sortDayBtn.addEventListener('click', () => {
+  sortConfig.field = 'day';
+  sortConfig.asc = true;
+  sortDayBtn.textContent = 'Sort by Day ▲';
+  sortCodeBtn.textContent = 'Sort by Class Code ▲';
+  applyFilter();
+});
+
+// View toggle event
+toggleViewBtn.addEventListener('click', () => {
+  isTableView = !isTableView;
+  toggleViewBtn.textContent = isTableView ? 'View as List' : 'View as Table';
+  
+  // Hide list-specific controls in table view
+  sortCodeBtn.hidden = isTableView;
+  sortDayBtn.hidden = isTableView;
+  
+  applyFilter();
+});
+
+// Form submission
+form.addEventListener('submit', event => {
+  event.preventDefault();
+  clearErrors();
+
+  const { errors, codeValue, checkedDays, startValue, endValue } = validateForm();
   if (errors.length) {
-    showErrors(errors)
-    return
+    document.getElementById('error-container').innerHTML = 
+      errors.map(error => `<div>${error}</div>`).join('');
+    return;
   }
 
   if (editIndex !== null) {
-  // 1) Remove the original entry
-  const oldEntry = getCurrentStudent().enrolledClasses.splice(editIndex, 1)[0]
-  const addedEntries = []
-  let allAdded = true
-  // 2) Try to add one new entry per selected day
-  for (let d of days) {
-    const candidate = new ClassEntry(code, d, start, end)
-    const err = getCurrentStudent().addClass(candidate)
-    if (err) {
-      allAdded = false
-      // 3a) Rollback any that got added
-      addedEntries.forEach(ent => {
-        const idx = getCurrentStudent().enrolledClasses.indexOf(ent)
-        if (idx > -1) {
-          getCurrentStudent().enrolledClasses.splice(idx, 1)
-        }
-      })
-      break
+    // Edit existing class
+    const originalClass = getCurrentStudent().enrolledClasses.splice(editIndex, 1)[0];
+    const addedClasses = [];
+    let success = true;
+
+    for (let day of checkedDays) {
+      const updatedClass = new ClassEntry(codeValue, day, startValue, endValue);
+      const error = getCurrentStudent().addClass(updatedClass);
+      
+      if (error) {
+        success = false;
+        // Remove any classes that were added
+        addedClasses.forEach(addedClass => {
+          const addedIndex = getCurrentStudent().enrolledClasses.indexOf(addedClass);
+          if (addedIndex > -1) getCurrentStudent().enrolledClasses.splice(addedIndex, 1);
+        });
+        break;
+      }
+      addedClasses.push(updatedClass);
     }
-    addedEntries.push(candidate)
-  }
 
-  if (!allAdded) {
-    // 3b) Restore original at its old position
-    getCurrentStudent().enrolledClasses.splice(editIndex, 0, oldEntry)
-    showErrors(['Time conflict or invalid time.'])
-    return
-  }
+    if (!success) {
+      // Restore original class if edit failed
+      getCurrentStudent().enrolledClasses.splice(editIndex, 0, originalClass);
+      document.getElementById('error-container').innerHTML = 
+        '<div>Time conflict or invalid time.</div>';
+      return;
+    }
 
-  // 4) Success: clear edit state
-  editIndex = null
-
+    editIndex = null;
   } else {
-  // Add-mode: push one entry per day (unchanged)
-  for (let d of days) {
-    const entry = new ClassEntry(code, d, start, end)
-    const err = getCurrentStudent().addClass(entry)
-    if (err) {
-      showErrors([err])
-      return
+    // Add new classes
+    for (let day of checkedDays) {
+      const newClass = new ClassEntry(codeValue, day, startValue, endValue);
+      const error = getCurrentStudent().addClass(newClass);
+      
+      if (error) {
+        document.getElementById('error-container').innerHTML = `<div>${error}</div>`;
+        return;
+      }
     }
   }
-}
 
-  // Re-render + reset form + reset button text
-  applyFilter()
-  form.reset()
-  submitBtn.textContent = 'Add Class'
-})
+  applyFilter();
+  form.reset();
+  submitBtn.textContent = 'Add Class';
+});
 
-;['code','startTime','endTime'].forEach(id =>
-  document.getElementById(id).addEventListener('input', clearErrors)
-)
-document.querySelectorAll('#day-group input').forEach(ch =>
-  ch.addEventListener('change', clearErrors)
-)
-
-let resetConfirming = false
-let resetTimerId
+// Reset list with confirmation
+let resetConfirming = false;
+let resetTimeout;
 
 resetBtn.addEventListener('click', () => {
   if (!resetConfirming) {
-    // 1st click: flip into “confirm” mode
-    resetConfirming = true
-    resetBtn.textContent = 'Confirm Reset'
-    resetBtn.classList.add('confirming')
+    resetConfirming = true;
+    resetBtn.textContent = 'Confirm Reset';
+    resetBtn.classList.add('confirming');
 
-    // auto‐revert after 5s if unused
-    resetTimerId = setTimeout(() => {
-      resetConfirming = false
-      resetBtn.textContent = 'Reset List'
-      resetBtn.classList.remove('confirming')
-    }, 5000)
-
+    resetTimeout = setTimeout(() => {
+      resetConfirming = false;
+      resetBtn.textContent = 'Reset List';
+      resetBtn.classList.remove('confirming');
+    }, 5000);
   } else {
-    // 2nd click: user confirmed
-    clearTimeout(resetTimerId)
-    getCurrentStudent().enrolledClasses = []
-    applyFilter()
-
-    // restore button to normal
-    resetConfirming = false
-    resetBtn.textContent = 'Reset List'
-    resetBtn.classList.remove('confirming')
+    clearTimeout(resetTimeout);
+    getCurrentStudent().enrolledClasses = [];
+    applyFilter();
+    
+    resetConfirming = false;
+    resetBtn.textContent = 'Reset List';
+    resetBtn.classList.remove('confirming');
   }
-})
+});
 
-// Initial render on page load
-populateTimeSelects()
-applyFilter()
+// Clear errors when user starts typing
+['code', 'startTime', 'endTime'].forEach(fieldId => {
+  document.getElementById(fieldId).addEventListener('input', clearErrors);
+});
+
+document.querySelectorAll('#day-group input').forEach(checkbox => {
+  checkbox.addEventListener('change', clearErrors);
+});
+
+// Filter and search events
+filterDaySelect.addEventListener('change', applyFilter);
+searchInput.addEventListener('input', applyFilter);
+
+// ===== INITIALIZATION =====
+
+// Start the application
+populateTimeSelects();
+refreshStudentDropdown();
+applyFilter();
