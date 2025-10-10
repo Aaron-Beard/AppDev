@@ -32,12 +32,17 @@ class Student {
     this.name = name;
     this.id = id;
     this.enrolledClasses = [];
+    console.log(`🆕 Created new student: ${name} (${id})`);
+    // REMOVED THE PROBLEMATIC LINE THAT REFERENCED 'students'
   }
 
   // Add a class with validation for time conflicts
   addClass(newClass) {
+    console.log(`🔄 Attempting to add class: ${newClass.code} on ${newClass.day} from ${newClass.startTime} to ${newClass.endTime}`);
+    
     // Validate end time is after start time
     if (toMinutes(newClass.endTime) <= toMinutes(newClass.startTime)) {
+      console.log(`❌ Failed: End time must be after start time for ${newClass.code}`);
       return `End time must be after start time for ${newClass.code}.`;
     }
 
@@ -49,30 +54,39 @@ class Student {
         toMinutes(newClass.startTime) < toMinutes(existingClass.endTime);
 
       if (hasConflict) {
+        console.log(`❌ Time conflict detected with ${existingClass.code} on ${existingClass.day}`);
         return `Time conflict with ${existingClass.code} on ${existingClass.day}.`;
       }
     }
 
     this.enrolledClasses.push(newClass);
+    console.log(`✅ Successfully added class: ${newClass.code}`);
+    console.log('📊 Current enrolled classes:', this.enrolledClasses);
     return null; // Success - no error
   }
 
   // Remove class by index
   removeClass(index) {
+    const removedClass = this.enrolledClasses[index];
     this.enrolledClasses.splice(index, 1);
+    console.log(`🗑️ Removed class: ${removedClass.code} on ${removedClass.day}`);
+    console.log('📊 Remaining enrolled classes:', this.enrolledClasses);
   }
 
   // Update existing class with validation
   updateClass(index, updatedClass) {
+    console.log(`✏️ Attempting to update class at index ${index}`);
     const originalClass = this.enrolledClasses.splice(index, 1)[0];
     const error = this.addClass(updatedClass);
     
     if (error) {
       // Restore original class if update fails
       this.enrolledClasses.splice(index, 0, originalClass);
+      console.log(`❌ Update failed: ${error}`);
       return error;
     }
     
+    console.log(`✅ Successfully updated class`);
     return null; // Success
   }
 
@@ -95,6 +109,9 @@ class Student {
 // Initialize with a default student
 const students = [new Student('Timmy', '001')];
 let currentStudentId = students[0].id;
+
+// Log the initial students array after it's properly initialized
+console.log('📋 Initial students array:', students.map(s => ({ name: s.name, id: s.id, classCount: s.enrolledClasses.length })));
 
 // UI state management
 let sortConfig = { field: null, asc: true };
@@ -149,7 +166,7 @@ function formatTime(hhmm) {
 
 // Get currently selected student
 function getCurrentStudent() {
-  return students.find(student => student.id === currentStudentId);
+  return students.find(student => student.id === currentStudentId) || null;
 }
 
 // Clear all error displays
@@ -187,7 +204,9 @@ function populateTimeSelects() {
 // ===== RENDERING FUNCTIONS =====
 
 // Render class list in grouped view
-function renderList(classList = getCurrentStudent().enrolledClasses) {
+function renderList(classList = getCurrentStudent()?.enrolledClasses || []) {
+  console.log('📝 Rendering list view with classes:', classList);
+  
   if (!classList.length) {
     listDiv.innerText = 'No classes enrolled.';
     return;
@@ -208,6 +227,8 @@ function renderList(classList = getCurrentStudent().enrolledClasses) {
       return toMinutes(a.startTime) - toMinutes(b.startTime);
     });
 
+    console.log(`🔤 Sorted by code (${sortConfig.asc ? 'ascending' : 'descending'}):`, sortedClasses);
+
     // Group by class code
     const uniqueCodes = [...new Set(sortedClasses.map(c => c.code))];
     groupedClasses = uniqueCodes.map(code => ({
@@ -222,6 +243,8 @@ function renderList(classList = getCurrentStudent().enrolledClasses) {
       if (dayA !== dayB) return dayA - dayB;
       return toMinutes(a.startTime) - toMinutes(b.startTime);
     });
+
+    console.log('📅 Sorted by day (chronological):', sortedClasses);
 
     // Group by day
     groupedClasses = WEEKDAYS
@@ -270,7 +293,9 @@ function renderList(classList = getCurrentStudent().enrolledClasses) {
 }
 
 // Render schedule as timetable
-function renderTable(classList) {
+function renderTable(classList = getCurrentStudent()?.enrolledClasses || []) {
+  console.log('📊 Rendering table view with classes:', classList);
+  
   if (!classList.length) {
     listDiv.innerHTML = '<div>No classes enrolled.</div>';
     return;
@@ -281,11 +306,15 @@ function renderTable(classList) {
   if (classList.some(c => c.day === 'Saturday')) daysToShow.push('Saturday');
   if (classList.some(c => c.day === 'Sunday')) daysToShow.push('Sunday');
 
+  console.log('📅 Days to display:', daysToShow);
+
   // Calculate time range
   const startTimes = classList.map(c => toMinutes(c.startTime));
   const endTimes = classList.map(c => toMinutes(c.endTime));
   const earliestTime = Math.min(...startTimes);
   const latestTime = Math.max(...endTimes);
+
+  console.log(`⏰ Time range: ${formatTime(String(Math.floor(earliestTime/60)).padStart(2,'0') + ':' + String(earliestTime%60).padStart(2,'0'))} to ${formatTime(String(Math.floor(latestTime/60)).padStart(2,'0') + ':' + String(latestTime%60).padStart(2,'0'))}`);
 
   // Generate 15-minute time slots
   const timeSlots = [];
@@ -357,8 +386,15 @@ function renderTable(classList) {
 }
 
 // Display class summary information
-function renderSummary(classList = getCurrentStudent().enrolledClasses) {
+function renderSummary(classList = getCurrentStudent()?.enrolledClasses || []) {
   const student = getCurrentStudent();
+  
+  // Handle case when no students exist
+  if (!student) {
+    summaryDiv.innerText = 'No student selected.';
+    return;
+  }
+
   const studentInfo = `${student.name} (${student.id})`;
 
   if (!classList.length) {
@@ -383,13 +419,25 @@ function renderSummary(classList = getCurrentStudent().enrolledClasses) {
 
 // Apply current filters and render appropriate view
 function applyFilter() {
+  const currentStudent = getCurrentStudent();
+  
+  // Handle case when no students exist
+  if (!currentStudent) {
+    listDiv.innerHTML = '<div>No students available. Please add a student.</div>';
+    summaryDiv.innerText = 'No student selected.';
+    return;
+  }
+
   const selectedDay = filterDaySelect.value;
   const searchTerm = searchInput.value.trim().toUpperCase();
-  let filteredClasses = getCurrentStudent().enrolledClasses;
+  let filteredClasses = currentStudent.enrolledClasses;
+
+  console.log(`🔍 Applying filters - Day: ${selectedDay}, Search: "${searchTerm}"`);
 
   // Filter by day
   if (selectedDay !== 'All') {
     filteredClasses = filteredClasses.filter(c => c.day === selectedDay);
+    console.log(`📅 Filtered by ${selectedDay}:`, filteredClasses);
   }
 
   // Filter by search term
@@ -397,6 +445,7 @@ function applyFilter() {
     filteredClasses = filteredClasses.filter(c => 
       c.code.toUpperCase().includes(searchTerm)
     );
+    console.log(`🔎 Filtered by search "${searchTerm}":`, filteredClasses);
   }
 
   // Render in current view mode
@@ -418,6 +467,7 @@ function attachEntryHandlers() {
     button.addEventListener('click', function(event) {
       clearErrors();
       editIndex = Number(event.currentTarget.dataset.index);
+      console.log(`✏️ Entering edit mode for class at index ${editIndex}`);
       
       const classToEdit = getCurrentStudent().enrolledClasses[editIndex];
       document.getElementById('code').value = classToEdit.code;
@@ -437,6 +487,7 @@ function attachEntryHandlers() {
   // Cancel edit buttons
   document.querySelectorAll('.cancel-btn').forEach(button => {
     button.addEventListener('click', function() {
+      console.log('❌ Cancelled edit mode');
       editIndex = null;
       clearErrors();
       submitBtn.textContent = 'Add Class';
@@ -454,6 +505,7 @@ function attachEntryHandlers() {
         // First click - show confirmation
         button.classList.add('confirming');
         button.textContent = 'Confirm Delete';
+        console.log('⚠️ Delete confirmation required');
 
         deleteTimeout = setTimeout(() => {
           button.classList.remove('confirming');
@@ -515,6 +567,7 @@ function validateForm() {
 // Student management events
 studentSelect.addEventListener('change', () => {
   currentStudentId = studentSelect.value;
+  console.log(`👤 Switched to student: ${currentStudentId}`);
   applyFilter();
 });
 
@@ -525,6 +578,7 @@ addStudentBtn.addEventListener('click', () => {
 
   if (!name || !id || students.some(s => s.id === id)) {
     studentErrorDiv.innerText = 'Invalid or duplicate student name/ID';
+    console.log('❌ Failed to add student: Invalid or duplicate');
     return;
   }
 
@@ -533,6 +587,9 @@ addStudentBtn.addEventListener('click', () => {
   currentStudentId = id;
   refreshStudentDropdown();
   applyFilter();
+
+  // Log the updated students array after adding a new student
+  console.log('📋 Updated students array:', students.map(s => ({ name: s.name, id: s.id, classCount: s.enrolledClasses.length })));
 
   studentNameInput.value = '';
   studentIdInput.value = '';
@@ -543,6 +600,7 @@ deleteStudentBtn.addEventListener('click', () => {
     deleteStudentConfirm = true;
     deleteStudentBtn.textContent = 'Confirm Delete';
     deleteStudentBtn.classList.add('confirming');
+    console.log('⚠️ Student deletion confirmation required');
 
     deleteStudentTimerId = setTimeout(() => {
       deleteStudentConfirm = false;
@@ -556,8 +614,13 @@ deleteStudentBtn.addEventListener('click', () => {
     deleteStudentBtn.classList.remove('confirming');
 
     const studentIndex = students.findIndex(s => s.id === currentStudentId);
-    if (studentIndex > -1) students.splice(studentIndex, 1);
+    if (studentIndex > -1) {
+      const deletedStudent = students.splice(studentIndex, 1)[0];
+      console.log(`🗑️ Deleted student: ${deletedStudent.name} (${deletedStudent.id})`);
+      console.log('📋 Remaining students:', students.map(s => ({ name: s.name, id: s.id })));
+    }
 
+    // Update currentStudentId - if no students left, set to null
     currentStudentId = students.length ? students[0].id : null;
     refreshStudentDropdown();
     applyFilter();
@@ -570,6 +633,7 @@ sortCodeBtn.addEventListener('click', () => {
   sortConfig.asc = !sortConfig.asc;
   sortCodeBtn.textContent = `Sort by Class Code ${sortConfig.asc ? '▲' : '▼'}`;
   sortDayBtn.textContent = 'Sort by Day ▲';
+  console.log(`🔤 Sorting by code (${sortConfig.asc ? 'ascending' : 'descending'})`);
   applyFilter();
 });
 
@@ -579,6 +643,7 @@ sortDayBtn.addEventListener('click', () => {
   sortConfig.asc = true;
   sortDayBtn.textContent = 'Sort by Day ▲';
   sortCodeBtn.textContent = 'Sort by Class Code ▲';
+  console.log('📅 Sorting by day (chronological)');
   applyFilter();
 });
 
@@ -586,6 +651,7 @@ sortDayBtn.addEventListener('click', () => {
 toggleViewBtn.addEventListener('click', () => {
   isTableView = !isTableView;
   toggleViewBtn.textContent = isTableView ? 'View as List' : 'View as Table';
+  console.log(`👁️ Switched to ${isTableView ? 'table' : 'list'} view`);
   
   // Hide list-specific controls in table view
   sortCodeBtn.hidden = isTableView;
@@ -603,10 +669,12 @@ form.addEventListener('submit', event => {
   if (errors.length) {
     document.getElementById('error-container').innerHTML = 
       errors.map(error => `<div>${error}</div>`).join('');
+    console.log('❌ Form validation failed:', errors);
     return;
   }
 
   if (editIndex !== null) {
+    console.log(`✏️ Updating class at index ${editIndex}`);
     // Edit existing class
     const originalClass = getCurrentStudent().enrolledClasses.splice(editIndex, 1)[0];
     const addedClasses = [];
@@ -638,6 +706,7 @@ form.addEventListener('submit', event => {
 
     editIndex = null;
   } else {
+    console.log(`➕ Adding new classes for days: ${checkedDays.join(', ')}`);
     // Add new classes
     for (let day of checkedDays) {
       const newClass = new ClassEntry(codeValue, day, startValue, endValue);
@@ -664,6 +733,7 @@ resetBtn.addEventListener('click', () => {
     resetConfirming = true;
     resetBtn.textContent = 'Confirm Reset';
     resetBtn.classList.add('confirming');
+    console.log('⚠️ Reset confirmation required');
 
     resetTimeout = setTimeout(() => {
       resetConfirming = false;
@@ -672,7 +742,10 @@ resetBtn.addEventListener('click', () => {
     }, 5000);
   } else {
     clearTimeout(resetTimeout);
-    getCurrentStudent().enrolledClasses = [];
+    const student = getCurrentStudent();
+    const classCount = student.enrolledClasses.length;
+    student.enrolledClasses = [];
+    console.log(`🔄 Reset all ${classCount} classes for ${student.name}`);
     applyFilter();
     
     resetConfirming = false;
@@ -697,6 +770,8 @@ searchInput.addEventListener('input', applyFilter);
 // ===== INITIALIZATION =====
 
 // Start the application
+console.log('🚀 Initializing Class Scheduling System...');
 populateTimeSelects();
 refreshStudentDropdown();
 applyFilter();
+console.log('✅ Application initialized successfully');
