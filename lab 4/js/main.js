@@ -5,6 +5,24 @@ const WEEKDAYS = [
   'Thursday', 'Friday', 'Saturday', 'Sunday'
 ]
 
+// 12–15 distinct colors for course codes
+const PALETTE = [
+  '#A6CEE3', '#1F78B4', '#B2DF8A', '#33A02C',
+  '#FB9A99', '#E31A1C', '#FDBF6F', '#FF7F00',
+  '#CAB2D6', '#6A3D9A', '#FFFF99', '#B15928'
+];
+
+const codeToColor   = {};
+let   nextColorIdx  = 0;
+
+function getColorForCode(code) {
+  if (!codeToColor[code]) {
+    codeToColor[code] = PALETTE[nextColorIdx % PALETTE.length];
+    nextColorIdx++;
+  }
+  return codeToColor[code];
+}
+
 // Populate time select elements with 15-min intervals
 function populateTimeSelects() {
   const startSel = document.getElementById('startTime')
@@ -117,6 +135,8 @@ function getCurrentStudent() {
 // References to DOM elements
 const form      = document.getElementById('add-form')
 const listDiv   = document.getElementById('list')
+console.log('✔ listDiv is', listDiv)
+
 const summaryDiv= document.getElementById('summary')
 const resetBtn  = document.getElementById('reset-btn')
 const sortCodeBtn = document.getElementById('sort-code-btn')
@@ -130,6 +150,7 @@ const studentIdInput   = document.getElementById('student-id-input')
 const studentErrorDiv  = document.getElementById('student-error')
 const deleteStudentBtn      = document.getElementById('delete-student-btn')
 const searchInput = document.getElementById('search-input')
+const toggleViewBtn = document.getElementById('toggle-view-btn');
 
 let sortConfig = {
   field: null,   // 'code' or 'day'
@@ -139,6 +160,7 @@ let sortConfig = {
 let editIndex = null
 let   deleteStudentConfirm  = false
 let   deleteStudentTimerId
+let   isTableView   = false;
 
 searchInput.addEventListener('input', applyFilter)
 
@@ -182,24 +204,24 @@ addStudentBtn.addEventListener('click', () => {
   studentIdInput.value   = ''
 })
 
- deleteStudentBtn.addEventListener('click', () => {
-   if (!deleteStudentConfirm) {
-     deleteStudentConfirm = true
-     deleteStudentBtn.textContent = 'Confirm Delete'
-     deleteStudentBtn.classList.add('confirming')
+deleteStudentBtn.addEventListener('click', () => {
+  if (!deleteStudentConfirm) {
+    deleteStudentConfirm = true
+    deleteStudentBtn.textContent = 'Confirm Delete'
+    deleteStudentBtn.classList.add('confirming')
 
-     deleteStudentTimerId = setTimeout(() => {
-       deleteStudentConfirm = false
-       deleteStudentBtn.textContent = 'Delete Student'
-       deleteStudentBtn.classList.remove('confirming')
-     }, 5000)
+    deleteStudentTimerId = setTimeout(() => {
+      deleteStudentConfirm = false
+      deleteStudentBtn.textContent = 'Delete Student'
+      deleteStudentBtn.classList.remove('confirming')
+    }, 5000)
 
-   } else {
-     clearTimeout(deleteStudentTimerId)
+  } else {
+    clearTimeout(deleteStudentTimerId)
 
-     // 1) Remove from array
-     const idx = students.findIndex(s => s.id === currentStudentId)
-     if (idx > -1) students.splice(idx, 1)
+    // 1) Remove from array
+    const idx = students.findIndex(s => s.id === currentStudentId)
+    if (idx > -1) students.splice(idx, 1)
 
     // 2) Reset the delete‐button back to normal immediately
     deleteStudentConfirm = false
@@ -218,6 +240,27 @@ addStudentBtn.addEventListener('click', () => {
      applyFilter()
    }
  })
+
+ toggleViewBtn.addEventListener('click', () => {
+  // Flip the view mode
+  isTableView = !isTableView;
+  console.log('🛠 toggle clicked → isTableView =', isTableView);
+
+  // Update the button label
+  toggleViewBtn.textContent = isTableView 
+    ? 'View as List'
+    : 'View as Table';
+
+  // Hide or show the list-only controls
+  // (replace these IDs with whatever you’ve named them)
+  sortCodeBtn.hidden  = isTableView;
+  sortDayBtn.hidden   = isTableView;
+  submitBtn.hidden  = isTableView;
+  deleteStudentBtn.hidden = isTableView;
+
+  // Re-run your filter+render pipeline
+  applyFilter();
+});
 
 // Remove any existing highlight
 function clearHighlight() {
@@ -435,6 +478,103 @@ function renderList(list = getCurrentStudent().enrolledClasses) {
   attachEntryHandlers()
 }
 
+function renderTable(list) {
+
+  // 1) No classes?
+  if (!list.length) {
+    listDiv.innerHTML = '<div>No classes enrolled.</div>';
+    return;
+  }
+
+  // 2) Determine columns (Mon–Fri always, plus Sat/Sun if needed)
+  const days = ['Monday','Tuesday','Wednesday','Thursday','Friday'];
+  if (list.some(c => c.day === 'Saturday')) days.push('Saturday');
+  if (list.some(c => c.day === 'Sunday'))   days.push('Sunday');
+
+  // 3) Find time range (already multiples of 15)
+  const startTimes = list.map(c => toMinutes(c.startTime));
+  const endTimes   = list.map(c => toMinutes(c.endTime));
+  const minTime    = Math.min(...startTimes);
+  const maxTime    = Math.max(...endTimes);
+
+  // 4) Build the full array of 15-min slots
+  const slots = [];
+  for (let t = minTime; t < maxTime; t += 15) {
+    slots.push(t);
+  }
+
+  // 5) Reset color map for fresh render
+  Object.keys(codeToColor).forEach(k => delete codeToColor[k]);
+  nextColorIdx = 0;
+  list.forEach(c => getColorForCode(c.code));
+
+  // 6) Prepare skip counters per day
+  const skipCount = {};
+  days.forEach(d => skipCount[d] = 0);
+
+  // 7) Build table rows
+  const rowsHtml = slots.map(slot => {
+    const hours = Math.floor(slot / 60);
+    const minutes  = slot % 60;
+    const hhmm    = `${String(hours).padStart(2,'0')}:${String(minutes).padStart(2,'0')}`;
+    const timeLabel = formatTime(hhmm);
+
+    // Start the row with the time label cell (only on 30-min boundaries)
+    let row = `<tr>
+      <td class="time-cell">${slot % 30 === 0 ? timeLabel : ''}</td>`;
+
+    // For each day column
+    days.forEach(day => {
+      // If we’re skipping this slot (part of an earlier rowspan), decrement & continue
+      if (skipCount[day] > 0) {
+        skipCount[day]--;
+        return;
+      }
+
+      // Find a class that starts at this slot & day
+      const cls = list.find(c =>
+        c.day === day && toMinutes(c.startTime) === slot
+      );
+
+      if (cls) {
+        // Compute how many rows it should span
+        const span = (toMinutes(cls.endTime) - toMinutes(cls.startTime)) / 15;
+        skipCount[day] = span - 1;
+
+        const color = getColorForCode(cls.code);
+        row += `
+          <td rowspan="${span}"
+              class="class-cell"
+              style="background-color: ${color};">
+            <strong>${cls.code}</strong><br>
+            ${formatTime(cls.startTime)}–${formatTime(cls.endTime)}
+          </td>`;
+      } else {
+        // Empty slot
+        row += `<td></td>`;
+      }
+    });
+
+    row += '</tr>';
+    return row;
+  }).join('');
+
+  // 8) Construct full table HTML
+  const headerCells = days.map(d => `<th>${d.slice(0,3)}</th>`).join('');
+  listDiv.innerHTML = `
+    <table class="schedule-table">
+      <thead>
+        <tr>
+          <th></th>
+          ${headerCells}
+        </tr>
+      </thead>
+      <tbody>
+        ${rowsHtml}
+      </tbody>
+    </table>`;
+}
+
 function renderSummary(list = getCurrentStudent().enrolledClasses) {
   const student = getCurrentStudent();
   const nameId  = `${student.name} (${student.id})`;
@@ -465,24 +605,33 @@ function renderSummary(list = getCurrentStudent().enrolledClasses) {
 
 
 function applyFilter() {
-  const day    = filterDaySelect.value
-  const term   = searchInput.value.trim().toUpperCase()
-  let   list   = getCurrentStudent().enrolledClasses
+  const day    = filterDaySelect.value;
+  const term   = searchInput.value.trim().toUpperCase();
+  let   list   = getCurrentStudent().enrolledClasses;
 
-  // Filter by day
+  // 1) Filter by day
   if (day !== 'All') {
-    list = list.filter(c => c.day === day)
+    list = list.filter(c => c.day === day);
   }
 
-  // Live‐search filter on class code
+  // 2) Filter by live-search term
   if (term) {
-    list = list.filter(c =>
+    list = list.filter(c => 
       c.code.toUpperCase().includes(term)
-    )
+    );
   }
 
-  renderList(list)
-  renderSummary(list)
+  // 3) Render in the active view mode
+  if (isTableView) {
+    console.log('🛠 rendering TABLE');
+    renderTable(list);
+  } else {
+    console.log('🛠 rendering LIST');
+    renderList(list);
+  }
+
+  // 4) Always update the summary below
+  renderSummary(list);
 }
 
 filterDaySelect.addEventListener('change', applyFilter)

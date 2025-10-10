@@ -46,3 +46,23 @@ button.confirming {
   color:           #721c24;
 }
 
+.schedule-table {
+  border-collapse: collapse;
+  width: 100%;
+}
+.schedule-table th,
+.schedule-table td {
+  border: 1px solid #ccc;
+  text-align: center;
+  padding: 4px;
+  font-size: 0.9rem;
+}
+.schedule-table .time-cell {
+  background: #f9f9f9;
+  font-weight: bold;
+  width: 4em;
+}
+.schedule-table .class-cell {
+  color: #333;
+  line-height: 1.2;
+}
