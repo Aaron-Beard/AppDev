@@ -121,16 +121,15 @@ const summaryDiv= document.getElementById('summary')
 const resetBtn  = document.getElementById('reset-btn')
 const sortCodeBtn = document.getElementById('sort-code-btn')
 const sortDayBtn  = document.getElementById('sort-day-btn')
-const updateCodeInput = document.getElementById('update-code-input')
-const updateCodeBtn   = document.getElementById('update-code-btn')
 const submitBtn = form.querySelector('button[type=submit]')
 const filterDaySelect = document.getElementById('filter-day')
-const updateError = document.getElementById('update-error')
 const studentSelect   = document.getElementById('student-select')
 const addStudentBtn   = document.getElementById('add-student-btn')
 const studentNameInput = document.getElementById('student-name-input')
 const studentIdInput   = document.getElementById('student-id-input')
 const studentErrorDiv  = document.getElementById('student-error')
+const deleteStudentBtn      = document.getElementById('delete-student-btn')
+const searchInput = document.getElementById('search-input')
 
 let sortConfig = {
   field: null,   // 'code' or 'day'
@@ -138,6 +137,10 @@ let sortConfig = {
 }
 
 let editIndex = null
+let   deleteStudentConfirm  = false
+let   deleteStudentTimerId
+
+searchInput.addEventListener('input', applyFilter)
 
 // Populate the dropdown
 function refreshStudentDropdown() {
@@ -179,13 +182,42 @@ addStudentBtn.addEventListener('click', () => {
   studentIdInput.value   = ''
 })
 
+ deleteStudentBtn.addEventListener('click', () => {
+   if (!deleteStudentConfirm) {
+     deleteStudentConfirm = true
+     deleteStudentBtn.textContent = 'Confirm Delete'
+     deleteStudentBtn.classList.add('confirming')
 
-function clearUpdateError() {
-  updateError.textContent = ''
-}
+     deleteStudentTimerId = setTimeout(() => {
+       deleteStudentConfirm = false
+       deleteStudentBtn.textContent = 'Delete Student'
+       deleteStudentBtn.classList.remove('confirming')
+     }, 5000)
 
-updateCodeInput.addEventListener('input', clearUpdateError)
+   } else {
+     clearTimeout(deleteStudentTimerId)
 
+     // 1) Remove from array
+     const idx = students.findIndex(s => s.id === currentStudentId)
+     if (idx > -1) students.splice(idx, 1)
+
+    // 2) Reset the delete‐button back to normal immediately
+    deleteStudentConfirm = false
+    deleteStudentBtn.textContent = 'Delete Student'
+    deleteStudentBtn.classList.remove('confirming')
+
+     // 3) Pick new currentStudentId (first student or null)
+     if (students.length) {
+       currentStudentId = students[0].id
+     } else {
+       currentStudentId = null
+     }
+
+     // 4) Refresh UI
+     refreshStudentDropdown()
+     applyFilter()
+   }
+ })
 
 // Remove any existing highlight
 function clearHighlight() {
@@ -261,40 +293,6 @@ sortDayBtn.addEventListener('click', () => {
   applyFilter()
 })
 
-updateCodeBtn.addEventListener('click', () => {
-  clearUpdateError()
-  console.log('🖱 Find & Edit clicked – raw input:', updateCodeInput.value)
-
-  // now define and log codeToFind
-  const codeToFind = updateCodeInput.value.trim().toUpperCase()
-  console.log('   → normalized codeToFind =', codeToFind)
-
-  if (!codeToFind) {
-    updateError.textContent = 'Please enter a class code to update.'
-    return
-  }
-
-  const matches = getCurrentStudent().enrolledClasses
-    .map((entry, idx) => ({ entry, idx }))
-    .filter(({ entry }) => entry.code.toUpperCase().startsWith(codeToFind)
-    )
-  console.log('   → matches.length =', matches.length)
-
-  if (matches.length === 0) {
-    updateError.textContent = `No class found with code “${codeToFind}”.`
-    return
-  }
-
-  if (matches.length === 1) {
-    console.log('   → single match, idx =', matches[0].idx)
-    startEditSession(matches[0].idx)
-    return
-  }
-
-  console.log('   → multiple matches, rendering selector')
-  renderSessionSelector(matches)
-})
-
 function startEditSession(idx) {
   editIndex = idx
   const cls = getCurrentStudent().enrolledClasses[idx]
@@ -319,39 +317,6 @@ function startEditSession(idx) {
 
   // Remove the selector UI, if still present
   document.getElementById('edit-select-container').innerHTML = ''
-}
-
-function renderSessionSelector(matches) {
-  const container = document.getElementById('edit-select-container')
-  container.innerHTML = ''  // clear any old content
-
-  // Label above the dropdown
-  const label = document.createElement('label')
-  label.textContent = 'Select session to edit:'
-  container.appendChild(label)
-
-  // The <select> element
-  const select = document.createElement('select')
-  select.id = 'session-select'
-  container.appendChild(select)
-
-  // Populate options
-  matches.forEach(({ entry, idx }) => {
-    const opt = document.createElement('option')
-    opt.value = idx
-    opt.textContent = 
-      `${entry.code} - ${entry.day} - ${formatTime(entry.startTime)}-${formatTime(entry.endTime)}`
-    select.appendChild(opt)
-  })
-
-  // When the user picks one, immediately start editing it
-  select.addEventListener('change', e => {
-    const chosenIdx = Number(e.target.value)
-    startEditSession(chosenIdx)
-  })
-
-  // Optionally auto-open the dropdown
-  select.focus()
 }
 
 function onEditClick(e) {
@@ -500,13 +465,25 @@ function renderSummary(list = getCurrentStudent().enrolledClasses) {
 
 
 function applyFilter() {
-  const day = filterDaySelect.value
-  const all = getCurrentStudent().enrolledClasses
-  const filtered = day==='All' ? all : all.filter(c=>c.day===day)
+  const day    = filterDaySelect.value
+  const term   = searchInput.value.trim().toUpperCase()
+  let   list   = getCurrentStudent().enrolledClasses
 
-  renderList(filtered)   
-  renderSummary(filtered)
- }
+  // Filter by day
+  if (day !== 'All') {
+    list = list.filter(c => c.day === day)
+  }
+
+  // Live‐search filter on class code
+  if (term) {
+    list = list.filter(c =>
+      c.code.toUpperCase().includes(term)
+    )
+  }
+
+  renderList(list)
+  renderSummary(list)
+}
 
 filterDaySelect.addEventListener('change', applyFilter)
 

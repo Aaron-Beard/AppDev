@@ -15,6 +15,8 @@
     <input type="text" id="student-name-input" placeholder="Student name">
     <input type="text" id="student-id-input"   placeholder="Student ID">
     <button type="button" id="add-student-btn">Add Student</button>
+    <button type="button" id="delete-student-btn">Delete Student</button>
+
 
     <div id="student-error" class="error-container"></div>
   </div>
@@ -42,6 +44,7 @@
   </form>
 
   <div id="controls">
+
    <label for="filter-day">Filter Day:</label>
    <select id="filter-day">
      <option value="All">All Days</option>
@@ -57,17 +60,11 @@
     <button id="sort-day-btn">Sort by Day ▲</button>
   </div>
 
-  <label for="update-code-input">Update Class Code:</label>
   <input
-    type="text"
-    id="update-code-input"
-    placeholder="Enter code to edit…"
-  />
-  <button type="button" id="update-code-btn">Find & Edit</button>
-
-  <div id="edit-select-container"></div>
-  <div id="update-error" class="error-message"></div>
-
+      type="text"
+      id="search-input"
+      placeholder="Search classes…"
+    />
 
   <div id="list"></div>
   <div id="summary"></div>
