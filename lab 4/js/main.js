@@ -446,15 +446,20 @@ function renderList(list = getCurrentStudent().enrolledClasses) {
           const idx       = getCurrentStudent().enrolledClasses.indexOf(c)
           const isEditing = idx === editIndex
 
+          const startsBeforeNine = toMinutes(c.startTime) < 9 * 60;
+          const endsAfterFive    = toMinutes(c.endTime)   > 17 * 60;
+
           // Choose what to display before the time
           const entryLabel = isCodeSort
             ? c.day
             : c.code
 
           return `
-            <div class="class-entry${isEditing ? ' editing' : ''}">
+            <div class="class-entry${isEditing ? ' editing' : ''}
+            ${startsBeforeNine ? ' before-nine' : ''}
+            ${endsAfterFive    ? ' after-five'  : ''}">
               <span>
-                ${entryLabel} – ${formatTime(c.startTime)}–${formatTime(c.endTime)}
+                ${entryLabel} - ${formatTime(c.startTime)}-${formatTime(c.endTime)}
               </span>
               ${isEditing
                 ? `<button class="cancel-btn" data-index="${idx}">Cancel</button>`

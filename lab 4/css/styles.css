@@ -66,3 +66,9 @@ button.confirming {
   color: #333;
   line-height: 1.2;
 }
+
+/* highlights text in red for early or late sessions */
+.class-entry.before-nine span,
+.class-entry.after-five span {
+  color: red;
+}
